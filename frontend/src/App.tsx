@@ -115,7 +115,7 @@ function Company() {
               {ov.price && ov.prev_close ? (ov.price - ov.prev_close > 0 ? '+' : '') + (ov.price - ov.prev_close).toFixed(2) : ''} ({pct(ov.change, 2)})
             </span>
             <span className="dimmer mono" style={{ fontSize: 11 }}>{ov.quote?.exchange} · {ov.quote?.currency} · {ov.quote?.partial
-              ? <span className="gold" title="Fetched during the session: the last bar is a live snapshot, not a close">intraday {new Date(ov.quote.as_of).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              ? <span className="gold" title="Fetched during the session: the last bar is a live snapshot, not a close">intraday {new Date(ov.quote.as_of).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'America/New_York' })} ET</span>
               : <>close {ov.last_bar}</>}</span>
           </div>
         )}

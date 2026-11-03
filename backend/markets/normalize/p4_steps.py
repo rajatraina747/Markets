@@ -20,17 +20,15 @@ def build_ownership(conn, cid, reg, base) -> int:
         if not persons:
             bad += 1
             persons = [{"name": p["filer"], "shares": None, "percent": None, "event_date": None}]
-        seen = set()
-        for x in persons:
-            name = (x["name"] or p["filer"] or "?").strip()
-            if name in seen:
-                continue
-            seen.add(name)
-            conn.execute("INSERT INTO holders_13dg VALUES (?,?,?,?,?,?,?,?,?)",
-                         (cid, f["accession"], f["form"], f["filed"], name,
-                          p["filer_cik"] if name == p["filer"] or len(persons) == 1 else None,
-                          x["shares"], x["percent"], x["event_date"]))
-            n += 1
+        # Joint filings (affiliates, trusts) list several reporting persons for one stake:
+        # collapse to the filer, keeping the largest reported position.
+        best = max(persons, key=lambda x: (x["shares"] or 0, x["percent"] or 0))
+        name = (p["filer"] if len(persons) > 1 and p["filer"] else best["name"] or p["filer"] or "?").strip()
+        conn.execute("INSERT INTO holders_13dg VALUES (?,?,?,?,?,?,?,?,?)",
+                     (cid, f["accession"], f["form"], f["filed"], name, p["filer_cik"],
+                      best["shares"], max((x["percent"] or 0) for x in persons) or best["percent"],
+                      best["event_date"]))
+        n += 1
     if bad:
         print(f"  ownership: {bad} filings without a parseable cover page (stored filer only)", file=sys.stderr)
     return n

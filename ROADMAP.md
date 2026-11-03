@@ -20,7 +20,7 @@
 - [x] Partial-bar flag — an in-session fetch labels the last bar "intraday", never a close.
 
 ## P4.5 Next small things
-- [ ] Concept explorer — click a Financials cell → every raw XBRL fact behind it (API exists:
+- [x] Concept explorer — double-click a Financials cell → every raw XBRL fact behind it (
       `/api/c/<T>/facts/<concept>`).
 - [ ] Proxy summary-comp table + director list parsed from DEF 14A HTML.
 - [ ] 13F institutional holders (SEC quarterly bulk sets) — bigger than 13G's >5% view.

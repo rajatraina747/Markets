@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import type { Statements } from '../api'
+import type { FactSeries, Statements } from '../api'
 import { useApi, useLocal } from '../hooks'
 import { EChart, base, axis, C } from '../components/EChart'
-import { cellValue, compact, money, pct } from '../format'
+import { cellValue, compact, date, money, pct } from '../format'
 
 const STMTS: [string, string][] = [['IS', 'Income statement'], ['BS', 'Balance sheet'], ['CF', 'Cash flow']]
 
@@ -51,10 +51,42 @@ function LineChart({ st, line }: { st: Statements; line: string }) {
   return <EChart option={option} height={300} />
 }
 
+function ConceptExplorer({ t, concept, end, onClose }: { t: string; concept: string; end: string; onClose: () => void }) {
+  const { data } = useApi<FactSeries>(`c/${t}/facts/${concept}`)
+  const rows = (data?.facts ?? []).filter((f) => f.period_end === end)
+  const all = data?.facts ?? []
+  return (
+    <div className="palette-bg" onMouseDown={onClose}>
+      <div className="palette" style={{ width: 860, maxHeight: '76vh', display: 'flex', flexDirection: 'column' }} onMouseDown={(e) => e.stopPropagation()}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--line)' }}>
+          <div className="mono gold">{concept}</div>
+          <div style={{ fontWeight: 600, marginTop: 2 }}>{data?.label}</div>
+          {data?.description && <div className="dim" style={{ fontSize: 12, marginTop: 4, lineHeight: 1.5 }}>{data.description}</div>}
+        </div>
+        <div style={{ overflow: 'auto' }}>
+          <div className="dimmer" style={{ padding: '8px 16px', fontSize: 11 }}>Every filing that reported this concept for the period ending {date(end)} — later filings restate earlier ones ({all.length.toLocaleString()} facts for this concept in total)</div>
+          <table className="t">
+            <thead><tr><th>Filed</th><th>Form</th><th>Period</th><th className="n">Value</th><th>Accession</th></tr></thead>
+            <tbody>
+              {rows.map((f, i) => (
+                <tr key={i}><td className="mono dim">{f.filed}</td><td>{f.form}</td><td className="mono dim">{f.period_start ? `${f.period_start} → ` : ''}{f.period_end}</td>
+                  <td className="n">{f.unit === 'USD' ? money(f.value, 2) : compact(f.value, 2)} <span className="dimmer">{f.unit}</span></td>
+                  <td className="mono dimmer" style={{ fontSize: 11 }}><a href={`/c/${t}/filings/${f.accession}`}>{f.accession}</a></td></tr>
+              ))}
+              {!rows.length && <tr><td colSpan={5} className="dimmer">{data ? 'Derived value — no single filing reports it directly.' : 'loading…'}</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Financials({ t }: { t: string }) {
   const [period, setPeriod] = useLocal<'annual' | 'quarterly'>('fin-period', 'annual')
   const [stmt, setStmt] = useLocal<string>('fin-stmt', 'IS')
   const [sel, setSel] = useState('revenue')
+  const [explore, setExplore] = useState<{ concept: string; end: string } | null>(null)
   const { data: st, error } = useApi<Statements>(`c/${t}/statements?period=${period}`)
 
   const rows = useMemo(() => st?.lines.filter((l) => stmt === 'ALL' || l.statement === stmt) ?? [], [st, stmt])
@@ -74,7 +106,7 @@ export default function Financials({ t }: { t: string }) {
         <div className="seg">
           {[...STMTS, ['ALL', 'All']].map(([k, l]) => <button key={k} className={stmt === k ? 'on' : ''} onClick={() => setStmt(k)}>{l}</button>)}
         </div>
-        <span className="dimmer" style={{ marginLeft: 'auto', fontSize: 12 }}><i>Italic</i> = derived (e.g. Q4 = FY − 9M) · hover a cell for its source tag</span>
+        <span className="dimmer" style={{ marginLeft: 'auto', fontSize: 12 }}><i>Italic</i> = derived (e.g. Q4 = FY − 9M) · hover a cell for its source tag · double-click to audit it</span>
       </div>
       {!st ? <div className="loading">loading statements</div> : (
         <>
@@ -95,21 +127,24 @@ export default function Financials({ t }: { t: string }) {
                 </thead>
                 <tbody>
                   {STMTS.filter(([k]) => stmt === 'ALL' || stmt === k).map(([k, label]) => (
-                    <FinSection key={k} st={st} label={stmt === 'ALL' ? label : null} rows={rows.filter((r) => r.statement === k)} sel={selLine} onSel={setSel} />
+                    <FinSection key={k} st={st} label={stmt === 'ALL' ? label : null} rows={rows.filter((r) => r.statement === k)} sel={selLine} onSel={setSel}
+                      onCell={(concept, end) => concept !== 'derived' && setExplore({ concept, end })} />
                   ))}
                 </tbody>
               </table>
             </div>
           </section>
           <Ratios st={st} />
+          {explore && <ConceptExplorer t={t} concept={explore.concept} end={explore.end} onClose={() => setExplore(null)} />}
         </>
       )}
     </div>
   )
 }
 
-function FinSection({ st, label, rows, sel, onSel }: {
+function FinSection({ st, label, rows, sel, onSel, onCell }: {
   st: Statements; label: string | null; rows: Statements['lines']; sel?: string; onSel: (k: string) => void
+  onCell: (concept: string, end: string) => void
 }) {
   return (
     <>
@@ -124,7 +159,8 @@ function FinSection({ st, label, rows, sel, onSel }: {
               const c = cells[p.end]
               return (
                 <td key={p.end} className={'n' + (c?.derived ? ' derived' : '') + (c && c.v < 0 ? ' neg' : '')}
-                  title={c ? `${c.concept}${c.derived ? ' (derived)' : ''}\n${c.acc ?? ''}` : 'not reported'}>
+                  title={c ? `${c.concept}${c.derived ? ' (derived)' : ''}\n${c.acc ?? ''}\ndouble-click: every filing behind this number` : 'not reported'}
+                  onDoubleClick={() => c && onCell(c.concept, p.end)}>
                   {c ? cellValue(c.v, l.unit) : <span className="dimmer">·</span>}
                 </td>
               )
