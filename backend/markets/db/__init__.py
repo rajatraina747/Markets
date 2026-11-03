@@ -12,6 +12,7 @@ from .. import config
 
 SCHEMA_VERSION = 5
 SCHEMA_SQL = Path(__file__).with_name("schema.sql")
+RECREATED = False  # set when ensure_schema had to rebuild the file — callers must repopulate every company
 
 
 def connect(path: Path | None = None, readonly: bool = False) -> sqlite3.Connection:
@@ -20,7 +21,7 @@ def connect(path: Path | None = None, readonly: bool = False) -> sqlite3.Connect
         conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True, check_same_thread=False)
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(path)
+        conn = sqlite3.connect(path, timeout=120)  # nightly job + manual runs may overlap
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
     conn.row_factory = sqlite3.Row
@@ -36,6 +37,8 @@ def ensure_schema(path: Path | None = None) -> sqlite3.Connection:
         if conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION:
             return conn
         conn.close()
+        global RECREATED
+        RECREATED = True
         for suffix in ("", "-wal", "-shm"):
             Path(str(path) + suffix).unlink(missing_ok=True)
     conn = connect(path)

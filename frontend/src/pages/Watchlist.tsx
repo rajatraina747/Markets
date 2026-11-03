@@ -42,7 +42,9 @@ export default function Watchlist() {
             <div style={{ padding: '12px 14px 4px', display: 'flex', alignItems: 'baseline', gap: 8 }}>
               <span className="mono gold" style={{ fontWeight: 700, fontSize: 15 }}>{r.ticker}</span>
               <span className="dim" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{r.name}</span>
-              {r.archived_filings >= r.filings * 0.9 ? <span className="tag k10" title="full filing archive">FULL</span> : <span className="tag" title="lite: prices + financials + ownership/proxy filings">LITE</span>}
+              {r.filings === 0 ? <span className="tag q10" title="non-SEC listing: prices, news, macro (+ Companies House with a key)">{r.ticker.includes('.') ? 'LSE' : 'NON-SEC'}</span>
+                : r.archived_filings >= r.filings * 0.9 ? <span className="tag k10" title="full filing archive">FULL</span>
+                : <span className="tag" title="lite: prices + financials + ownership/proxy filings">LITE</span>}
             </div>
             <div style={{ padding: '0 14px', display: 'flex', alignItems: 'baseline', gap: 10 }}>
               <span className="mono" style={{ fontSize: 20, fontWeight: 600 }}>{price(r.price)}</span>

@@ -60,7 +60,7 @@ export default function Peers() {
 
   return (
     <div className="grid">
-      <div className="page-title"><h1>Compare</h1><span className="sub">Total-return (dividend-adjusted) performance rebased to the first common date · fundamentals side by side · best in each row highlighted</span></div>
+      <div className="page-title"><h1>Compare</h1><span className="sub">Total-return (dividend-adjusted, local currency) performance rebased to the first common date · fundamentals side by side · best in each row highlighted</span></div>
       <div className="filters">
         {(all ?? []).map((r, i) => (
           <span key={r.ticker} className={'chip' + (tickers.includes(r.ticker) ? ' on' : '')} onClick={() => toggle(r.ticker)}>

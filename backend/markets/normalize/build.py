@@ -161,7 +161,17 @@ def register_step(name: str, fn) -> None:
 
 def rebuild(reg: dict, only: set[str] | None = None, conn: sqlite3.Connection | None = None) -> dict:
     from . import extra_steps  # noqa: F401 — registers P2+ steps
+    fresh = conn is None
     conn = conn or db.ensure_schema()
+    if fresh and db.RECREATED and only is None:
+        # Schema changed: the old DB is gone, so repopulate every tracked company, not just this one.
+        from .. import registry
+        db.RECREATED = False
+        print("schema changed — rebuilding every tracked company", file=sys.stderr)
+        others = [r for t, r in sorted(registry.load().items()) if t != reg["ticker"]]
+        for r in others:
+            print(f"rebuild {r['ticker']}…", file=sys.stderr)
+            rebuild(r, conn=conn)
     base = config.company_dir(reg["ticker"])
     out = {}
     with conn:
