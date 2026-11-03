@@ -1,0 +1,9 @@
+# Fetched + derived data — local only (raw archive is re-fetchable; journal.db is backed up separately)
+/data/
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+/frontend/dist/
+*.tmp
+.env
