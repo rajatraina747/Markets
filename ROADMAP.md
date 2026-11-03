@@ -43,9 +43,13 @@
 - **Earnings** — every 8-K 2.02 classified (results vs operational update), timing from SEC
   acceptance time (before open / intraday / after close), gap / day / +5d / +20d, vs SPY, volume,
   quarter metrics YoY/QoQ, forward-looking sentences from EX-99.1.
-- **Design system** — `frontend/src/ui` primitives + `/design` page.
-- **Workspace** — drag/resize grid of 11 widget types, 4 colour link groups, named layouts, pop-out
-  windows synced over BroadcastChannel.
+- **UI primitives** — `frontend/src/ui` (Panel, Stat, Seg, Chip, Tag, Delta, Bar…).
+- **Desk (multi-monitor)** — one window per monitor via the Window Management API (remembered
+  geometry fallback); 1/2/3/4-pane displays; every pane the full terminal (iframe, chrome-less,
+  route bridge) with a Bloomberg-style command line (`TICKER FN <GO>`, 16 functions + aliases);
+  colour link groups spanning all screens over BroadcastChannel; controller with live status,
+  identify, load-everywhere, close-all; preset + saved desks.
+- **Widget workspace** — single-screen drag/resize grid of 11 compact widgets.
 - Global build steps (macro, SPY/QQQ benchmarks) run once per run, before company steps; schema
   changes rebuild every company automatically.
 
@@ -55,7 +59,7 @@
 - [ ] Alerts — new 8-K / insider buy / 13D on a watched ticker → macOS notification or phone.
 - [ ] Segment hierarchy from the presentation linkbase (fixes the rare overlapping-member periods).
 - [ ] Earnings: structured guidance numbers (ranges for deliveries, capex, margins) when stated.
-- [ ] Workspace: more widgets (journal, screener, compare), drag-to-swap, keyboard focus per panel.
+- [ ] Desk: drag a pane between displays; per-pane history list; a "news ticker" strip display.
 - [ ] 13F history beyond 2 years (`--periods-13f 40`, ~3.5 GB) if it proves useful.
 
 ## ⚠️ Known gaps / honest limits

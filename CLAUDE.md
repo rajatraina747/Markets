@@ -32,8 +32,10 @@ S&P 500 is core tier; RR.L is the first UK listing. Start with README.md, then R
   `build.TIER_SKIP` per tier, `build.GLOBAL_STEPS` (macro, benchmarks) run once via
   `rebuild_global()` *before* company steps.
 - Tiers live in data/companies.json (`registry.tier()`); `universe` never downgrades a ticker.
-- UI: compose `frontend/src/ui` primitives; new views should also work as workspace widgets
-  (take a ticker, fill the panel) — register them in `workspace/widgets.tsx`.
+- UI: compose `frontend/src/ui` primitives. Multi-monitor = `desk/` (Desk controller, Display
+  windows, model with mnemonics). Every page must work chrome-less inside a desk pane (iframe:
+  `EMBED`, `EmbedBridge` reports routes / accepts navigate). New company pages → add a mnemonic to
+  `desk/model.ts FUNCTIONS`. The single-screen widget workspace is `workspace/`.
 - Bump `db.SCHEMA_VERSION` on any schema change; a stale DB is recreated on next rebuild.
 - Patterns adapted (copied, not imported) from Ember (`~/Documents/Robinhood Agent`).
 

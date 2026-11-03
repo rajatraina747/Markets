@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import type { Overview as OverviewT } from './api'
 import { useApi } from './hooks'
 import { pct, price, tone } from './format'
@@ -18,8 +18,34 @@ import Screener from './pages/Screener'
 import Macro from './pages/Macro'
 import Segments from './pages/Segments'
 import Earnings from './pages/Earnings'
-import Design from './pages/Design'
 import Workspace, { Popout } from './workspace/Workspace'
+import DisplayWindow from './desk/Display'
+import DeskControl from './desk/DeskControl'
+
+/** Inside a desk pane (an iframe) the app runs chrome-less and talks to its parent display. */
+export const EMBED = typeof window !== 'undefined' && window.self !== window.top
+
+function EmbedBridge() {
+  const loc = useLocation()
+  const nav = useNavigate()
+  useEffect(() => { window.parent.postMessage({ type: 'markets:route', path: loc.pathname + loc.search }, location.origin) }, [loc])
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== location.origin || e.source !== window.parent) return
+      if (e.data?.type === 'markets:navigate' && typeof e.data.path === 'string' && e.data.path.startsWith('/')) nav(e.data.path)
+    }
+    window.addEventListener('message', onMsg)
+    const down = () => window.parent.postMessage({ type: 'markets:activate' }, location.origin)
+    const key = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') { e.preventDefault(); window.parent.postMessage({ type: 'markets:focus-command' }, location.origin) }
+    }
+    window.addEventListener('mousedown', down)
+    window.addEventListener('keydown', key)
+    return () => { window.removeEventListener('message', onMsg); window.removeEventListener('mousedown', down); window.removeEventListener('keydown', key) }
+  }, [nav])
+  return null
+}
 
 const NAV = [
   { to: 'overview', label: 'Overview', key: 'o', icon: '◉' },
@@ -40,8 +66,8 @@ const GLOBAL = [
   { to: '/peers', label: 'Compare peers', key: 'v', icon: '≍' },
   { to: '/screener', label: 'Screener', key: 'x', icon: '⧩' },
   { to: '/macro', label: 'Macro', key: 'm', icon: '∿' },
-  { to: '/workspace', label: 'Workspace', key: 'k', icon: '⊞' },
-  { to: '/design', label: 'Design system', key: 'd', icon: '◈' },
+  { to: '/desk', label: 'Desk · multi-screen', key: 't', icon: '⧉' },
+  { to: '/workspace', label: 'Widget workspace', key: 'k', icon: '⊞' },
 ]
 const LAST = 'markets:last-ticker'
 const lastTicker = () => { try { return localStorage.getItem(LAST) } catch { return null } }
@@ -120,14 +146,14 @@ function Company() {
   )
 }
 
-function Global({ page }: { page: 'watchlist' | 'peers' | 'screener' | 'macro' | 'workspace' | 'design' }) {
+function Global({ page }: { page: 'watchlist' | 'peers' | 'screener' | 'macro' | 'workspace' | 'desk' }) {
   const { data } = useApi<{ ticker: string }[]>('companies')
   const t = (lastTicker() ?? data?.[0]?.ticker ?? '').toUpperCase()
   if (!t) return data ? <div className="empty">No companies yet — run <code>./markets add TSLA &amp;&amp; ./markets update TSLA</code></div> : <div className="loading">loading</div>
   return (
     <Shell t={t} global>
       {() => page === 'watchlist' ? <Watchlist /> : page === 'peers' ? <Peers /> : page === 'screener' ? <Screener />
-        : page === 'workspace' ? <Workspace t={t} /> : page === 'design' ? <Design /> : <Macro t={t} />}
+        : page === 'workspace' ? <Workspace t={t} /> : page === 'desk' ? <DeskControl t={t} /> : <Macro t={t} />}
     </Shell>
   )
 }
@@ -161,6 +187,7 @@ function Shell({ t, global = false, children }: { t: string; global?: boolean; c
 
   useEffect(() => { document.title = ov ? `${t} ${price(ov.price)} · Markets` : 'Markets' }, [ov, t])
 
+  if (EMBED) return <main className="main embed">{error && !global ? <div className="err">{error}</div> : children(ov)}</main>
   return (
     <div className="shell">
       <div className="topbar">
@@ -223,16 +250,20 @@ function Shell({ t, global = false, children }: { t: string; global?: boolean; c
 
 export default function App() {
   return (
+    <>
+    {EMBED && <EmbedBridge />}
     <Routes>
       <Route path="/" element={<Global page="watchlist" />} />
       <Route path="/peers" element={<Global page="peers" />} />
       <Route path="/screener" element={<Global page="screener" />} />
       <Route path="/macro" element={<Global page="macro" />} />
       <Route path="/workspace" element={<Global page="workspace" />} />
-      <Route path="/design" element={<Global page="design" />} />
       <Route path="/popout" element={<Popout />} />
+      <Route path="/desk" element={<Global page="desk" />} />
+      <Route path="/display" element={<DisplayWindow />} />
       <Route path="/c/:ticker/*" element={<Company />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }

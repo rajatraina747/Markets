@@ -239,3 +239,29 @@ select.input { padding-right: 24px; }
 .ws .stats { grid-template-columns: repeat(2, 1fr); }
 .hdr-right { text-transform: none; letter-spacing: 0; color: var(--text-3); font-weight: 400; }
 .swatch { height: 46px; border-radius: 8px; border: 1px solid var(--line); }
+
+/* ------------------------------------------------------------ desk (multi-monitor) */
+.main.embed { height: 100vh; padding: 12px 14px 24px; }
+.dk { height: 100vh; display: flex; flex-direction: column; background: #05070a; }
+.dk-bar { display: flex; align-items: center; gap: 10px; padding: 5px 10px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #0c0f14, #080a0e); }
+.dk-id { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; background: var(--gold); color: #0b0d10; font: 800 13px var(--mono); }
+.dk-group { border: 1px solid; border-radius: 5px; padding: 1px 7px; font-weight: 700; font-size: 11px; }
+.dk-grid { flex: 1; min-height: 0; display: grid; gap: 4px; padding: 4px; }
+.dk-pane { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); border: 1px solid var(--line); border-top: 2px solid var(--gold); border-radius: 6px; overflow: hidden; }
+.dk-pane.active { box-shadow: 0 0 0 1px var(--line-2), 0 0 24px rgba(212,175,55,.08); }
+.dk-pane.active .dk-num { background: var(--gold); color: #0b0d10; }
+.dk-phead { display: flex; align-items: center; gap: 7px; padding: 3px 6px; background: var(--bg-2); border-bottom: 1px solid var(--line); }
+.dk-num { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px; background: var(--bg-3); color: var(--text-2); font: 700 10px var(--mono); }
+.dk-sec { font-weight: 800; font-size: 13px; }
+.dk-fn { font-size: 11px; color: var(--text); background: var(--bg-3); padding: 1px 6px; border-radius: 4px; }
+.dk-cmd { flex: 1; display: flex; align-items: center; gap: 6px; margin-left: 8px; background: #05070a; border: 1px solid var(--line-2); border-radius: 5px; padding: 1px 4px 1px 8px; min-width: 120px; }
+.dk-cmd:focus-within { border-color: var(--gold); }
+.dk-cmd input { flex: 1; min-width: 60px; background: none; border: 0; outline: 0; color: var(--gold-2); font-size: 12px; }
+.dk-go { background: var(--gold); color: #0b0d10; border: 0; border-radius: 3px; font: 800 10px var(--mono); padding: 2px 6px; cursor: pointer; }
+.dk-frame { flex: 1; border: 0; width: 100%; background: var(--bg); }
+.dk-flash { position: fixed; inset: 0; display: grid; place-content: center; text-align: center; background: rgba(5,7,10,.72); z-index: 100; pointer-events: none; animation: dkfade 2.2s ease-out forwards; }
+.dk-flash div { font: 800 220px/1 var(--mono); color: var(--gold); text-shadow: 0 0 60px rgba(212,175,55,.4); }
+.dk-flash span { font: 600 22px var(--sans); color: var(--text-2); }
+@keyframes dkfade { 0%, 70% { opacity: 1 } 100% { opacity: 0 } }
+.dk-row { display: flex; gap: 16px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg-2); }
+.dk-pcfg { display: inline-flex; gap: 4px; align-items: center; padding: 3px 5px; border: 1px solid var(--line-2); border-top: 2px solid; border-radius: 6px; background: var(--bg-1); }

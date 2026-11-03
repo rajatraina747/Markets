@@ -80,11 +80,34 @@ After the first run, updates only fetch what's new.
 
 ## 🖥️ The dashboard
 
-<img src="docs/screenshots/workspace.png" alt="Workspace" width="100%" />
+### 🖥️🖥️🖥️ Desk — the multi-monitor terminal
 
-**Workspace** — a Bloomberg-style launchpad: drag, resize and mix any widgets; colour link groups (type
-a ticker in any gold panel and every gold panel follows); named layouts; **pop any panel out to a second
-monitor** and it stays linked.
+Run it like a Bloomberg desk: **one window per monitor**, each split into 1–4 panes, each pane a full
+terminal function with its own command line — `NVDA ERN <GO>`, `FA`, `CF`, `HDS`, `ECO`, `EQS`.
+**Security links span every screen**: load a ticker in any gold pane on any monitor and every gold pane
+on every monitor follows, each keeping its function.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/desk-display.png" alt="Display 4: watchlist, macro, screener, ownership" /></td>
+<td width="50%"><img src="docs/screenshots/desk-display-2.png" alt="Display 2: financials + earnings" /></td>
+</tr>
+</table>
+
+- **Desk controller** (`/desk`, `g t`) — define displays × panes × functions, **detect your monitors**
+  (Chrome/Edge Window Management API) and pin each display to a screen, **Launch desk** to open them
+  all, see which are live, *Identify* (flashes the number on every screen), *Load everywhere*, *Close all*.
+- Presets: **4-screen trader**, **2-screen analyst**, **1 screen · 4 panels**; save your own.
+- In a display: `⌃1–4` jump to a pane's command line · `⌃M` maximise a pane · `⌃I` identify · ⛶ fullscreen.
+- Click through inside a pane (a filing, a peer) and it navigates like a real terminal panel; open a
+  different company and its link group moves with it.
+- Without the screen API (Safari), each display reopens exactly where you last left it.
+
+<img src="docs/screenshots/desk-controller.png" alt="Desk controller" width="100%" />
+
+Also a single-window **Widget workspace** (`g k`): drag/resize compact widgets on one screen.
+
+<img src="docs/screenshots/workspace.png" alt="Workspace" width="100%" />
 
 <table>
 <tr>
@@ -110,11 +133,11 @@ monitor** and it stays linked.
 </table>
 
 Also: **Filings** reader (every document & exhibit, sandboxed), **News**, **Screener** (the whole
-universe, by sector), **Journal**, and a **Design system** page documenting every token and primitive.
+universe, by sector), and **Journal**.
 
 **Keyboard:** `/` or `⌘K` palette · `g o` overview · `g f` financials · `g b` segments · `g e` earnings ·
 `g l` filings · `g s` search · `g p` people · `g w` ownership · `g n` news · `g c` 10-K compare ·
-`g j` journal · `g h` watchlist · `g v` peers · `g x` screener · `g m` macro · `g k` workspace · `g d` design
+`g j` journal · `g h` watchlist · `g v` peers · `g x` screener · `g m` macro · `g t` desk · `g k` workspace
 
 ---
 
