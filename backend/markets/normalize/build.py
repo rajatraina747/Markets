@@ -70,7 +70,8 @@ def _non_sec_profile(reg: dict, base: Path) -> dict:
     return prof
 
 
-SEC_ONLY = {"filings", "documents", "facts", "insiders", "ownership", "proxy", "13f", "fts", "short_interest"}
+SEC_ONLY = {"filings", "documents", "facts", "insiders", "ownership", "proxy", "13f", "fts", "short_interest",
+            "segments", "earnings"}
 
 
 @step("filings")
@@ -159,27 +160,40 @@ def register_step(name: str, fn) -> None:
     STEPS.append((name, fn))
 
 
-def rebuild(reg: dict, only: set[str] | None = None, conn: sqlite3.Connection | None = None) -> dict:
+GLOBAL_STEPS = {"macro", "benchmarks"}  # cross-company tables: built once per run, not once per ticker
+TIER_SKIP = {"core": {"documents", "insiders", "ownership", "proxy", "13f", "fts", "news", "segments"}}
+
+
+def rebuild(reg: dict, only: set[str] | None = None, conn: sqlite3.Connection | None = None,
+            include_global: bool = True, quiet: bool = False) -> dict:
     from . import extra_steps  # noqa: F401 — registers P2+ steps
+    from .. import registry
     fresh = conn is None
     conn = conn or db.ensure_schema()
     if fresh and db.RECREATED and only is None:
         # Schema changed: the old DB is gone, so repopulate every tracked company, not just this one.
-        from .. import registry
         db.RECREATED = False
         print("schema changed — rebuilding every tracked company", file=sys.stderr)
+        rebuild_global(conn)  # shared tables first: per-company steps (earnings vs SPY) read them
         others = [r for t, r in sorted(registry.load().items()) if t != reg["ticker"]]
-        for r in others:
-            print(f"rebuild {r['ticker']}…", file=sys.stderr)
-            rebuild(r, conn=conn)
+        for i, r in enumerate(others):
+            print(f"rebuild [{i + 1}/{len(others)}] {r['ticker']}…", file=sys.stderr)
+            try:
+                rebuild(r, conn=conn, include_global=False, quiet=True)
+            except Exception as e:
+                print(f"  {r['ticker']} FAILED: {e}", file=sys.stderr)
+        include_global = False
     base = config.company_dir(reg["ticker"])
+    skip = TIER_SKIP.get(registry.tier(reg), set())
     out = {}
     with conn:
         cid = upsert_company(conn, reg, base)
     for name, fn in STEPS:
         if only and name not in only:
             continue
-        if not reg.get("cik") and name in SEC_ONLY:
+        if name in GLOBAL_STEPS and not include_global:
+            continue
+        if (not reg.get("cik") and name in SEC_ONLY) or name in skip:
             continue
         t0 = time.monotonic()
         with conn:
@@ -187,5 +201,17 @@ def rebuild(reg: dict, only: set[str] | None = None, conn: sqlite3.Connection | 
             secs = time.monotonic() - t0
             conn.execute("INSERT INTO build_log VALUES (?,?,?,?,?)", (cid, name, rows, secs, _now()))
         out[name] = rows
-        print(f"  {name:<12} {rows:>9,} rows  {secs:6.1f}s", file=sys.stderr)
+        if not quiet or secs > 5:
+            print(f"  {name:<14} {rows:>9,} rows  {secs:6.1f}s", file=sys.stderr)
     return out
+
+
+def rebuild_global(conn: sqlite3.Connection | None = None) -> None:
+    from . import extra_steps  # noqa: F401
+    conn = conn or db.ensure_schema()
+    for name, fn in STEPS:
+        if name in GLOBAL_STEPS:
+            t0 = time.monotonic()
+            with conn:
+                rows = fn(conn, None, None, None)
+            print(f"  {name:<14} {rows:>9,} rows  {time.monotonic() - t0:6.1f}s  (global)", file=sys.stderr)

@@ -42,9 +42,10 @@ function sma(closes: number[], n: number): (number | null)[] {
   return out
 }
 
-export function PriceChart({ prices, events, kinds, height = 440, onEvent }: {
+export function PriceChart({ prices, events, kinds, height = 440, onEvent, fluid = false }: {
   prices: Prices; events: EventRow[]; kinds: Set<string>; height?: number
   onEvent?: (e: EventRow) => void
+  fluid?: boolean  // fill the parent's height (workspace panels) instead of a fixed height
 }) {
   const el = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -178,8 +179,8 @@ export function PriceChart({ prices, events, kinds, height = 440, onEvent }: {
   const h = hover ?? (last ? { d: last[0], o: last[1], h: last[2], l: last[3], c: last[4], v: last[5], ev: evByDate.get(last[0]) ?? [] } : null)
 
   return (
-    <div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 14px', flexWrap: 'wrap' }}>
+    <div style={fluid ? { height: '100%', display: 'flex', flexDirection: 'column' } : undefined}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: fluid ? '6px 10px' : '10px 14px', flexWrap: 'wrap' }}>
         <div className="seg">{RANGES.map(([k]) => <button key={k} className={range === k ? 'on' : ''} onClick={() => setRange(k)}>{k}</button>)}</div>
         <div className="seg">
           {(['candles', 'line', 'area'] as Mode[]).map((m) => <button key={m} className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{m}</button>)}
@@ -197,15 +198,15 @@ export function PriceChart({ prices, events, kinds, height = 440, onEvent }: {
           </div>
         )}
       </div>
-      <div ref={el} style={{ height, position: 'relative' }} />
-      <div style={{ minHeight: 30, padding: '6px 14px', fontSize: 12 }} className="dim">
+      <div ref={el} style={fluid ? { flex: 1, minHeight: 0, position: 'relative' } : { height, position: 'relative' }} />
+      {!fluid && <div style={{ minHeight: 30, padding: '6px 14px', fontSize: 12 }} className="dim">
         {h?.ev.length ? h.ev.map((e, i) => (
           <span key={i} style={{ marginRight: 16 }}>
             <span className="bar" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: EVENT_KINDS[e.kind]?.color, marginRight: 6 }} />
             {e.title}{e.detail ? <span className="dimmer"> · {e.detail}</span> : null}
           </span>
         )) : <span className="dimmer">Hover the chart for OHLC and events · click a marker to open the filing</span>}
-      </div>
+      </div>}
     </div>
   )
 }

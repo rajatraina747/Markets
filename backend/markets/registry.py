@@ -32,6 +32,17 @@ def parse_ticker_map(payload: dict) -> dict[str, dict]:
 
 
 def ticker_map(fetcher: Fetcher, refresh: bool = False) -> dict[str, dict]:
+    global _TMAP
+    if _TMAP is not None and not refresh:
+        return _TMAP
+    _TMAP = _ticker_map(fetcher, refresh)
+    return _TMAP
+
+
+_TMAP: dict | None = None
+
+
+def _ticker_map(fetcher: Fetcher, refresh: bool = False) -> dict[str, dict]:
     base = archive.reference_base()
     snap = None if refresh else archive.latest_snapshot(base, "sec", "company_tickers_exchange.json")
     if snap is None:
@@ -43,15 +54,38 @@ def ticker_map(fetcher: Fetcher, refresh: bool = False) -> dict[str, dict]:
 NON_SEC_SUFFIX = {"L": ("GB", "LSE"), "IL": ("GB", "LSE IOB")}
 
 
-def add(ticker: str, fetcher: Fetcher, lite: bool | None = None, ch_number: str | None = None) -> dict:
+TIERS = ("full", "lite", "core")
+
+
+def tier(rec: dict) -> str:
+    """full = everything; lite = + ownership/proxy filings; core = prices + XBRL + index only."""
+    return rec.get("tier") or ("lite" if rec.get("lite") else "full")
+
+
+def add(ticker: str, fetcher: Fetcher, lite: bool | None = None, ch_number: str | None = None,
+        tier_: str | None = None, sector: str | None = None) -> dict:
     ticker = ticker.upper()
     reg = load()
+    if tier_ is not None:
+        lite = tier_ != "full"
+    if ticker in reg and (tier_ or sector):
+        changed = False
+        if tier_ and tier(reg[ticker]) != tier_ and not (tier_ == "core" and tier(reg[ticker]) != "core"):
+            reg[ticker]["tier"] = tier_
+            reg[ticker]["lite"] = tier_ != "full"
+            changed = True
+        if sector and reg[ticker].get("sector") != sector:
+            reg[ticker]["sector"] = sector
+            changed = True
+        if changed:
+            save(reg)
     if ticker in reg and ch_number and reg[ticker].get("ch_number") != ch_number:
         reg[ticker]["ch_number"] = ch_number
         save(reg)
     if ticker in reg:
-        if lite is not None and bool(reg[ticker].get("lite")) != lite:
+        if lite is not None and tier_ is None and bool(reg[ticker].get("lite")) != lite:
             reg[ticker]["lite"] = lite
+            reg[ticker]["tier"] = "lite" if lite else "full"
             save(reg)
         return reg[ticker]
     if "." in ticker and ticker.rsplit(".", 1)[1] in NON_SEC_SUFFIX:
@@ -71,7 +105,8 @@ def add(ticker: str, fetcher: Fetcher, lite: bool | None = None, ch_number: str 
     if ticker not in tmap:
         raise SystemExit(f"{ticker}: not in SEC's ticker map. For London listings use the Yahoo form, e.g. RR.L "
                          f"(optionally --ch <Companies House number>)")
-    rec = dict(tmap[ticker], ticker=ticker, lite=bool(lite),
+    rec = dict(tmap[ticker], ticker=ticker, lite=bool(lite), tier=tier_ or ("lite" if lite else "full"),
+               sector=sector,
                added_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
     reg[ticker] = rec
     save(reg)

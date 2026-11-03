@@ -4,10 +4,11 @@
 
 # MARKETS
 
-**A £0 Bloomberg-style research terminal, for one company at a time.**
+**A £0 Bloomberg-style research terminal — deep on one company, broad across the S&P 500.**
 
-Every SEC filing, every XBRL fact, every insider trade, every 13F holder, decades of prices —<br/>
-archived locally, normalized into SQLite, explored in a fast dark dashboard.
+Every SEC filing, every XBRL fact and segment, every insider trade, every 13F holder, every earnings<br/>
+reaction, decades of prices — archived locally, normalized into SQLite, explored in a fast dark<br/>
+dashboard or a multi-panel, multi-monitor workspace.
 
 ![python](https://img.shields.io/badge/python-3.10%2B%20stdlib%20only-d4af37?style=flat-square&labelColor=0d1015)
 ![react](https://img.shields.io/badge/react-vite%20%2B%20ts-d4af37?style=flat-square&labelColor=0d1015)
@@ -36,7 +37,9 @@ archived locally, normalized into SQLite, explored in a fast dark dashboard.
 
 | Want to… | Run |
 |---|---|
+| Track the whole S&P 500 (prices + financials) | `./markets universe sp500` → `./markets update all` |
 | Track a peer without the 2 GB archive | `./markets add GM --lite` |
+| Track a ticker as prices + financials only | `./markets add NVDA --core` |
 | Track a London listing | `./markets add RR.L --ch 07524813` *(Companies House needs a free key in `MARKETS_CH_KEY`)* |
 | Refresh everything | `./markets update all` |
 | Fast refresh (no filings) | `./markets update TSLA --skip-filings` |
@@ -44,8 +47,15 @@ archived locally, normalized into SQLite, explored in a fast dark dashboard.
 | See what's archived | `./markets status` |
 | Nightly auto-update (Tue–Sat 04:15) | `scripts/nightly.sh install` · `status` · `log` · `uninstall` |
 
-First full `update` of a company downloads its entire filing history (TSLA: 1,763 filings,
-1.9 GB raw → ~0.6 GB gzipped, ~30 min at SEC's rate limit). After that, only what's new.
+**Tiers** — choose depth per ticker:
+
+| Tier | What you get | Cost (TSLA-sized) |
+|---|---|---|
+| `full` | everything: every filing & exhibit, full-text search, 10-K diffs, insiders, proxies, segments, earnings text | ~2 GB raw, ~30 min first run |
+| `lite` | prices, financials, segments (XBRL instances), earnings reactions, ownership + proxy filings, 13F | ~0.1–0.5 GB |
+| `core` | prices, financials, filing index, earnings reactions, short interest — for broad universes | ~2–5 MB · ~20 s |
+
+After the first run, updates only fetch what's new.
 
 ---
 
@@ -55,6 +65,8 @@ First full `update` of a company downloads its entire filing history (TSLA: 1,76
 |---|---|---|
 | 📜 | **Every filing, every exhibit**, readable offline | SEC EDGAR full-submission archive |
 | 🧮 | **Income / balance / cash-flow statements**, annual + quarterly, restatement-aware | SEC XBRL companyfacts |
+| 🧩 | **Segments** — revenue by product, business segment and geography; subtotals detected | each 10-K/10-Q's XBRL instance |
+| 🎯 | **Earnings reactions** — gap, day, +5/+20 d, vs SPY, volume; the quarter's numbers YoY; guidance language | 8-K item 2.02 + prices |
 | 📈 | **Daily prices since IPO**, splits, dividends — cross-checked against a second feed | Yahoo chart API ⟷ Nasdaq |
 | 🕴️ | **Insiders** — every Form 3/4/5 transaction, holdings over time | EDGAR ownership XML |
 | 🏦 | **13F institutions** — who holds it, who's buying, put/call positioning | SEC quarterly 13F data sets |
@@ -68,7 +80,17 @@ First full `update` of a company downloads its entire filing history (TSLA: 1,76
 
 ## 🖥️ The dashboard
 
+<img src="docs/screenshots/workspace.png" alt="Workspace" width="100%" />
+
+**Workspace** — a Bloomberg-style launchpad: drag, resize and mix any widgets; colour link groups (type
+a ticker in any gold panel and every gold panel follows); named layouts; **pop any panel out to a second
+monitor** and it stays linked.
+
 <table>
+<tr>
+<td width="50%"><img src="docs/screenshots/earnings.png" alt="Earnings" /><br/><b>Earnings</b> — every results release with the market's reaction (the free stand-in for consensus), the quarter vs a year ago, and what management said about what's next.</td>
+<td width="50%"><img src="docs/screenshots/segments.png" alt="Segments" /><br/><b>Segments</b> — revenue by product / segment / geography, stacked, as mix, or as lines, reconciled against reported revenue.</td>
+</tr>
 <tr>
 <td width="50%"><img src="docs/screenshots/financials.png" alt="Financials" /><br/><b>Financials</b> — statements with sparklines; click a row to chart it, double-click a cell to audit every filing behind the number.</td>
 <td width="50%"><img src="docs/screenshots/compare.png" alt="10-K compare" /><br/><b>10-K compare</b> — pick two years and an Item (Risk Factors, MD&A…): what was added, removed, reworded.</td>
@@ -87,11 +109,12 @@ First full `update` of a company downloads its entire filing history (TSLA: 1,76
 </tr>
 </table>
 
-Also: **Filings** reader (every document & exhibit, sandboxed), **News**, **Screener**, **Journal**.
+Also: **Filings** reader (every document & exhibit, sandboxed), **News**, **Screener** (the whole
+universe, by sector), **Journal**, and a **Design system** page documenting every token and primitive.
 
-**Keyboard:** `/` or `⌘K` palette · `g o` overview · `g f` financials · `g l` filings · `g s` search ·
-`g p` people · `g w` ownership · `g n` news · `g c` 10-K compare · `g j` journal ·
-`g h` watchlist · `g v` peers · `g x` screener · `g m` macro
+**Keyboard:** `/` or `⌘K` palette · `g o` overview · `g f` financials · `g b` segments · `g e` earnings ·
+`g l` filings · `g s` search · `g p` people · `g w` ownership · `g n` news · `g c` 10-K compare ·
+`g j` journal · `g h` watchlist · `g v` peers · `g x` screener · `g m` macro · `g k` workspace · `g d` design
 
 ---
 
@@ -138,7 +161,10 @@ backend/markets/
   db/schema.sql          derived-store schema (versioned; stale DBs are recreated)
   journal.py             user data (journal.db)
   api/                   stdlib HTTP server + query layer
-frontend/                React + Vite + TS · lightweight-charts · ECharts · vendored fonts
+frontend/src/
+  ui/                    design system primitives (Panel, Stat, Seg, Chip, Tag, Delta, Bar…)
+  workspace/             multi-panel launchpad, widgets, pop-out windows
+  pages/                 one file per page
 launchd/ scripts/        nightly update job
 tests/                   offline unittest suite on trimmed real payloads
 docs/                    screenshots
@@ -155,6 +181,12 @@ data/                    (gitignored) companies/<T>/raw · reference/ · markets
 - Company-specific XBRL extensions aren't in companyfacts (e.g. Tesla's own CF D&A tag after 2018).
 - Proxy tables are parsed from HTML heuristically; every row is checked to sum to its total.
 - UK companies: prices + news + macro work out of the box; Companies House needs a free API key.
+- No consensus estimates: "beat or miss" is approximated by the market's reaction. Guidance is
+  extracted sentences, not structured numbers.
+- Segment members occasionally overlap where a filing tags a parent line without all its children;
+  the page flags those periods against reported revenue.
+- Core-tier tickers don't keep filing text, so their earnings rows have reactions + numbers but no
+  guidance excerpts.
 </details>
 
 ## 🧪 Development

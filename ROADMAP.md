@@ -34,12 +34,29 @@
 - **Nightly update** — `launchd/` plist + `scripts/nightly.sh install` (Tue–Sat 04:15 IST,
   logs in `~/Library/Logs/markets/`). *Written, not installed — installing is Rajat's call.*
 
+### P6 · breadth, segments, earnings, workspace (2026-11-04)
+- **Tiers** `full` / `lite` / `core`; `./markets universe sp500` (503 names, GICS sectors) at core tier;
+  watchlist / screener / peers scale to the universe (search, sector filters, auto sector peers).
+- **Segments** — dimensional XBRL from every 10-K/10-Q (EX-101.INS 2009–18, inline XBRL 2019→;
+  lite fetches just the instance file). Latest-classification per period, subtotal detection,
+  overlap warning vs reported revenue.
+- **Earnings** — every 8-K 2.02 classified (results vs operational update), timing from SEC
+  acceptance time (before open / intraday / after close), gap / day / +5d / +20d, vs SPY, volume,
+  quarter metrics YoY/QoQ, forward-looking sentences from EX-99.1.
+- **Design system** — `frontend/src/ui` primitives + `/design` page.
+- **Workspace** — drag/resize grid of 11 widget types, 4 colour link groups, named layouts, pop-out
+  windows synced over BroadcastChannel.
+- Global build steps (macro, SPY/QQQ benchmarks) run once per run, before company steps; schema
+  changes rebuild every company automatically.
+
 ## 🔜 Next
 - [ ] Get a free Companies House key → enable UK officers/PSCs/filings for RR.L.
 - [ ] UK financials: iXBRL accounts from Companies House filings (where filed electronically).
 - [ ] Alerts — new 8-K / insider buy / 13D on a watched ticker → macOS notification or phone.
 - [ ] Earnings view — results 8-K exhibit 99.1 side by side with the quarter's statements.
-- [ ] Sector peers from SIC codes automatically (currently hand-picked).
+- [ ] Segment hierarchy from the presentation linkbase (fixes the rare overlapping-member periods).
+- [ ] Earnings: structured guidance numbers (ranges for deliveries, capex, margins) when stated.
+- [ ] Workspace: more widgets (journal, screener, compare), drag-to-swap, keyboard focus per panel.
 - [ ] 13F history beyond 2 years (`--periods-13f 40`, ~3.5 GB) if it proves useful.
 
 ## ⚠️ Known gaps / honest limits

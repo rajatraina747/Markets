@@ -16,10 +16,16 @@ import Watchlist from './pages/Watchlist'
 import Peers from './pages/Peers'
 import Screener from './pages/Screener'
 import Macro from './pages/Macro'
+import Segments from './pages/Segments'
+import Earnings from './pages/Earnings'
+import Design from './pages/Design'
+import Workspace, { Popout } from './workspace/Workspace'
 
 const NAV = [
   { to: 'overview', label: 'Overview', key: 'o', icon: '◉' },
   { to: 'financials', label: 'Financials', key: 'f', icon: '▤' },
+  { to: 'segments', label: 'Segments', key: 'b', icon: '◫' },
+  { to: 'earnings', label: 'Earnings', key: 'e', icon: '◆' },
   { to: 'filings', label: 'Filings', key: 'l', icon: '▦' },
   { to: 'search', label: 'Search', key: 's', icon: '⌕' },
   { to: 'people', label: 'People', key: 'p', icon: '◎' },
@@ -34,6 +40,8 @@ const GLOBAL = [
   { to: '/peers', label: 'Compare peers', key: 'v', icon: '≍' },
   { to: '/screener', label: 'Screener', key: 'x', icon: '⧩' },
   { to: '/macro', label: 'Macro', key: 'm', icon: '∿' },
+  { to: '/workspace', label: 'Workspace', key: 'k', icon: '⊞' },
+  { to: '/design', label: 'Design system', key: 'd', icon: '◈' },
 ]
 const LAST = 'markets:last-ticker'
 const lastTicker = () => { try { return localStorage.getItem(LAST) } catch { return null } }
@@ -95,6 +103,8 @@ function Company() {
         <Routes>
           <Route path="overview" element={<Overview t={t} ov={ov} />} />
           <Route path="financials" element={<Financials t={t} />} />
+          <Route path="segments" element={<Segments t={t} />} />
+          <Route path="earnings" element={<Earnings t={t} />} />
           <Route path="filings" element={<Filings t={t} />} />
           <Route path="filings/:acc" element={<Filings t={t} />} />
           <Route path="search" element={<Search t={t} />} />
@@ -110,13 +120,14 @@ function Company() {
   )
 }
 
-function Global({ page }: { page: 'watchlist' | 'peers' | 'screener' | 'macro' }) {
+function Global({ page }: { page: 'watchlist' | 'peers' | 'screener' | 'macro' | 'workspace' | 'design' }) {
   const { data } = useApi<{ ticker: string }[]>('companies')
   const t = (lastTicker() ?? data?.[0]?.ticker ?? '').toUpperCase()
   if (!t) return data ? <div className="empty">No companies yet — run <code>./markets add TSLA &amp;&amp; ./markets update TSLA</code></div> : <div className="loading">loading</div>
   return (
     <Shell t={t} global>
-      {() => page === 'watchlist' ? <Watchlist /> : page === 'peers' ? <Peers /> : page === 'screener' ? <Screener /> : <Macro t={t} />}
+      {() => page === 'watchlist' ? <Watchlist /> : page === 'peers' ? <Peers /> : page === 'screener' ? <Screener />
+        : page === 'workspace' ? <Workspace t={t} /> : page === 'design' ? <Design /> : <Macro t={t} />}
     </Shell>
   )
 }
@@ -217,6 +228,9 @@ export default function App() {
       <Route path="/peers" element={<Global page="peers" />} />
       <Route path="/screener" element={<Global page="screener" />} />
       <Route path="/macro" element={<Global page="macro" />} />
+      <Route path="/workspace" element={<Global page="workspace" />} />
+      <Route path="/design" element={<Global page="design" />} />
+      <Route path="/popout" element={<Popout />} />
       <Route path="/c/:ticker/*" element={<Company />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

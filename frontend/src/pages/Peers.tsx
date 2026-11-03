@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import type { CompareRes, WatchRow } from '../api'
 import { useApi } from '../hooks'
@@ -38,12 +38,21 @@ export default function Peers() {
   const [sp, setSp] = useSearchParams()
   const { data: all } = useApi<WatchRow[]>('watchlist')
   const picked = (sp.get('t') ?? '').split(',').filter(Boolean)
-  const tickers = picked.length ? picked : (all ?? []).map((r) => r.ticker)
+  const tracked = (all ?? []).filter((r) => r.tier !== 'core')
+  const tickers = picked.length ? picked : tracked.map((r) => r.ticker)
+  const [add, setAdd] = useState('')
+  const sectorPeers = (t: string) => {
+    const me = (all ?? []).find((r) => r.ticker === t)
+    if (!me) return
+    const same = (all ?? []).filter((r) => r.ticker !== t && ((me.sic && r.sic === me.sic) || (me.sector && r.sector === me.sector)))
+      .sort((a, b) => (Number(b.sic === me.sic) - Number(a.sic === me.sic)) || (b.market_cap ?? 0) - (a.market_cap ?? 0)).slice(0, 7)
+    set('t', [t, ...same.map((r) => r.ticker)].join(','))
+  }
   const since = sp.get('since') ?? '3y'
   const { data: cmp } = useApi<CompareRes>(tickers.length ? `compare?tickers=${tickers.join(',')}&since=${sinceDate(since)}` : null)
   const set = (k: string, v: string) => { const n = new URLSearchParams(sp); n.set(k, v); setSp(n, { replace: true }) }
   const toggle = (t: string) => set('t', (tickers.includes(t) ? tickers.filter((x) => x !== t) : [...tickers, t]).join(','))
-  const rows = (all ?? []).filter((r) => tickers.includes(r.ticker))
+  const rows = tickers.map((t) => (all ?? []).find((r) => r.ticker === t)).filter(Boolean) as WatchRow[]
 
   const option = useMemo(() => cmp && {
     ...base, grid: { left: 52, right: 90, top: 16, bottom: 46 },
@@ -52,19 +61,24 @@ export default function Peers() {
     xAxis: { type: 'time', ...axis },
     yAxis: { type: 'log', ...axis, axisLabel: { ...axis.axisLabel, formatter: (v: number) => (v - 100 >= 0 ? '+' : '') + (v - 100).toFixed(0) + '%' } },
     series: Object.entries(cmp.series).map(([t, pts]) => {
-      const i = (all ?? []).findIndex((r) => r.ticker === t)
+      const i = Math.max(0, tickers.indexOf(t))
       return { name: t, type: 'line', data: pts, showSymbol: false, lineStyle: { width: 2, color: PALETTE[i % PALETTE.length] }, itemStyle: { color: PALETTE[i % PALETTE.length] },
         endLabel: { show: true, formatter: (p: { seriesName: string; value: [string, number] }) => `${p.seriesName} ${p.value[1] >= 100 ? '+' : ''}${(p.value[1] - 100).toFixed(0)}%`, color: PALETTE[i % PALETTE.length], fontFamily: 'JetBrains Mono', fontSize: 11 } }
     }),
-  }, [cmp, all])
+  }, [cmp, tickers.join(',')]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="grid">
       <div className="page-title"><h1>Compare</h1><span className="sub">Total-return (dividend-adjusted, local currency) performance rebased to the first common date · fundamentals side by side · best in each row highlighted</span></div>
       <div className="filters">
-        {(all ?? []).map((r, i) => (
+        <input className="input" list="tick-list" placeholder="+ add ticker" value={add} style={{ width: 130 }}
+          onChange={(e) => setAdd(e.target.value.toUpperCase())}
+          onKeyDown={(e) => { if (e.key === 'Enter' && add) { set('t', [...new Set([...tickers, add])].join(',')); setAdd('') } }} />
+        <datalist id="tick-list">{(all ?? []).map((r) => <option key={r.ticker} value={r.ticker}>{r.name}</option>)}</datalist>
+        {tickers[0] && <span className="chip" onClick={() => sectorPeers(tickers[0])} title="Same SIC industry first, then GICS sector, largest first">⚡ sector peers of {tickers[0]}</span>}
+        {(all ?? []).filter((r) => tickers.includes(r.ticker) || r.tier !== 'core').map((r) => (
           <span key={r.ticker} className={'chip' + (tickers.includes(r.ticker) ? ' on' : '')} onClick={() => toggle(r.ticker)}>
-            <span className="dot" style={{ background: PALETTE[i % PALETTE.length] }} />{r.ticker}
+            <span className="dot" style={{ background: tickers.includes(r.ticker) ? PALETTE[tickers.indexOf(r.ticker) % PALETTE.length] : '#3a4350' }} />{r.ticker}
           </span>
         ))}
         <span style={{ flex: 1 }} />

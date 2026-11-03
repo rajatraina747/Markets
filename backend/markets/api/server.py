@@ -200,7 +200,22 @@ def api_institutions(q, t):
 
 @route(r"/api/watchlist")
 def api_watchlist(q):
-    return queries.watchlist(conn())
+    return queries.watchlist(conn(), set(q["tiers"].split(",")) if q.get("tiers") else None)
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/segments")
+def api_segments(q, t):
+    return queries.segments(conn(), _cid(t), q.get("period", "annual"))
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/earnings")
+def api_earnings(q, t):
+    return queries.earnings_list(conn(), _cid(t))
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/window")
+def api_window(q, t):
+    return queries.window(conn(), _cid(t), q["date"], int(q.get("before", 15)), int(q.get("after", 25)))
 
 
 @route(r"/api/compare")

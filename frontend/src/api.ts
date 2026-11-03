@@ -163,5 +163,26 @@ export interface WatchRow {
   returns: Record<string, Num>; valuation: Record<string, Num>; margins: Record<string, Num>
   ttm: Record<string, Num>; balance: Record<string, Num>; high_52w: Num; low_52w: Num
   spark: number[]; archived_filings: number; filings: number; revenue_growth: Num
+  tier: 'full' | 'lite' | 'core'; sector: string | null; sic: string | null; country?: string; currency?: string
 }
 export interface CompareRes { start?: string; series: Record<string, [string, number][]> }
+
+// ---------------------------------------------------------------- segments / earnings / universe
+
+export interface SegMember { member: string; label: string; is_subtotal: boolean; n: number; values: Record<string, { v: number; derived: number; fy: number; fp: string }> }
+export interface SegAxis { axis: string; label: string; n_points: number; metrics: Record<string, { periods: string[]; members: SegMember[] }> }
+export interface Segments { period: 'annual' | 'quarterly'; axes: SegAxis[]; total_revenue: Record<string, number> }
+
+export interface MetricCell { v: Num; yoy?: Num; qoq?: Num; yago?: Num }
+export interface EarningsRow {
+  accession: string; filed: string; accepted_et: string | null; timing: 'bmo' | 'intraday' | 'amc' | null
+  kind: 'earnings' | 'update'; period_end: string | null; fy: number | null; fp: string | null
+  base_date: string | null; base_close: Num; react_date: string | null
+  gap: Num; day: Num; d5: Num; d20: Num; excess_day: Num; excess_d5: Num; vol_ratio: Num
+  metrics: Record<string, MetricCell> | null; guidance: string[]
+}
+export interface Earnings {
+  rows: EarningsRow[]
+  stats: { n: number; avg_abs_day: Num; avg_day: Num; up: number; down: number; avg_excess_day: Num; avg_d5: Num; avg_abs_day_8q: Num
+    follow_through: Num; biggest_up: { fp: string; fy: number; day: number; filed: string } | null; biggest_down: { fp: string; fy: number; day: number; filed: string } | null }
+}

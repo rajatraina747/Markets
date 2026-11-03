@@ -1,8 +1,8 @@
 # Markets — context for Claude
 
 £0 Bloomberg-style research terminal. Rajat's goal: better (paper, then real) trades via deep
-public data on one company at a time. TSLA is the full-depth company; GM, F, RIVN, LCID are lite
-peers; RR.L is the first UK listing. Start with README.md, then ROADMAP.md.
+public data. TSLA is the full-depth company; GM, F, RIVN, LCID are lite peers; the rest of the
+S&P 500 is core tier; RR.L is the first UK listing. Start with README.md, then ROADMAP.md.
 
 ## Hard rules
 - **Free data only.** No paid feeds or hosting. Official APIs and bulk files; don't scrape sites
@@ -28,7 +28,12 @@ peers; RR.L is the first UK listing. Start with README.md, then ROADMAP.md.
 - Frontend: React + Vite + TS; `npm run build` → `frontend/dist`, served by `./markets serve`
   (port 5800). Dark terminal look, RainaCorp gold `#d4af37`, fonts vendored (offline-safe).
 - Build steps: `normalize/build.py` (core) + `extra_steps.py` (registration order matters:
-  events after insiders/ownership). Steps in `build.SEC_ONLY` are skipped for non-SEC tickers.
+  earnings → events → fts → summary). `build.SEC_ONLY` skip for non-SEC tickers,
+  `build.TIER_SKIP` per tier, `build.GLOBAL_STEPS` (macro, benchmarks) run once via
+  `rebuild_global()` *before* company steps.
+- Tiers live in data/companies.json (`registry.tier()`); `universe` never downgrades a ticker.
+- UI: compose `frontend/src/ui` primitives; new views should also work as workspace widgets
+  (take a ticker, fill the panel) — register them in `workspace/widgets.tsx`.
 - Bump `db.SCHEMA_VERSION` on any schema change; a stale DB is recreated on next rebuild.
 - Patterns adapted (copied, not imported) from Ember (`~/Documents/Robinhood Agent`).
 
@@ -46,3 +51,7 @@ peers; RR.L is the first UK listing. Start with README.md, then ROADMAP.md.
 - Proxy SCT: titles sit on continuation rows; bare `(1)` cells are footnotes, not zeros; pick the
   column alignment whose components sum to Total.
 - Journal writes: same-origin + JSON content-type only (server binds 127.0.0.1).
+- SEC acceptanceDateTime is real UTC (Tesla results ≈ 20:05Z = after close). Tesla files its
+  delivery report as an 8-K 2.02 two days after quarter end — classified as an "update".
+- Segment members get re-classified across years; only the newest filing's members are used
+  per period, and product-axis "…Segment" members are treated as subtotals.

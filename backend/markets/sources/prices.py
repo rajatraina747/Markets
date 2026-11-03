@@ -150,3 +150,26 @@ def reconcile(primary: list[dict], secondary: list[dict], tol: float = 0.01) -> 
         if abs(b["close"] - s) / s > tol:
             mism.append({"date": b["date"], "yahoo": b["close"], "nasdaq": s})
     return {"shared": shared, "mismatches": mism}
+
+
+BENCHMARKS = {"SPY": "S&P 500 (SPY)", "QQQ": "Nasdaq-100 (QQQ)"}
+
+
+def fetch_benchmarks(fetcher: Fetcher) -> list[Path]:
+    """Shared reference prices (cross-company), stored under data/reference/raw/benchmarks/."""
+    out = []
+    for sym in BENCHMARKS:
+        url = YAHOO.format(sym=sym, now=int(time.time()))
+        data = fetcher.get(url)
+        parse_yahoo(data)
+        out.append(archive.write_snapshot(archive.reference_base(), "benchmarks", f"{sym}.json", data, url, compress=True))
+    return out
+
+
+def load_benchmarks() -> dict[str, list[dict]]:
+    out = {}
+    for sym in BENCHMARKS:
+        snap = archive.latest_snapshot(archive.reference_base(), "benchmarks", f"{sym}.json")
+        if snap:
+            out[sym] = parse_yahoo(archive.read_raw(snap))["bars"]
+    return out

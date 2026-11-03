@@ -123,7 +123,14 @@ def build_events(conn, cid, reg, base) -> int:
             codes = [c.strip() for c in (f["items"] or "").split(",") if c.strip()]
             labels = [ITEMS_8K.get(c, c) for c in codes if c != "9.01"]
             if "2.02" in codes:
-                ev.append((f["filed"], "earnings", "Results release (8-K 2.02)", ", ".join(labels), f["accession"], 3))
+                k = conn.execute("SELECT kind, fp, fy, day FROM earnings WHERE company_id=? AND accession=?",
+                                 (cid, f["accession"])).fetchone()
+                if k and k["kind"] == "update":
+                    ev.append((f["filed"], "8k", "Operational update (8-K 2.02)", ", ".join(labels), f["accession"], 2))
+                else:
+                    title = f"Earnings {k['fp']} {k['fy']}" if k and k["fp"] else "Results release (8-K 2.02)"
+                    detail = f"reaction {k['day'] * 100:+.1f}%" if k and k["day"] is not None else ", ".join(labels)
+                    ev.append((f["filed"], "earnings", title, detail, f["accession"], 3))
             else:
                 imp = 3 if HIGH_ITEMS & set(codes) else 1
                 ev.append((f["filed"], "8k", "8-K: " + (", ".join(labels) or "Current report"),
@@ -195,6 +202,10 @@ register_step("news", p4_steps.build_news)
 register_step("proxy", p4_steps.build_proxy)
 register_step("13f", p4_steps.build_13f)
 register_step("macro", p4_steps.build_macro)
+register_step("benchmarks", p4_steps.build_benchmarks)
 register_step("uk", p4_steps.build_uk)
+register_step("segments", p4_steps.build_segments)
+register_step("earnings", p4_steps.build_earnings)
 register_step("events", build_events)
 register_step("fts", build_fts)
+register_step("summary", p4_steps.build_summary)

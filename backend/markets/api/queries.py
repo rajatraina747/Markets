@@ -1,6 +1,7 @@
 """queries.py — read-side shaping for the API (pure SQL + small math)."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from datetime import date, timedelta
 
@@ -501,27 +502,39 @@ def macro_series(conn, keys: list[str] | None = None, since: str = "1990-01-01")
     return out
 
 
-def watchlist(conn) -> list[dict]:
-    """One summary row per tracked company (watchlist, screener, compare picker)."""
+def summary_row(conn, cid) -> dict | None:
+    """One watchlist/screener row (computed at build time into company_summary)."""
+    try:
+        ov = overview(conn, cid)
+    except Exception:  # half-built company
+        return None
+    closes = [r[0] for r in conn.execute(
+        "SELECT close FROM (SELECT date, close FROM prices_daily WHERE company_id=? ORDER BY date DESC LIMIT 120) "
+        "ORDER BY date", (cid,))]
+    if not closes:
+        return None
+    co = ov["company"]
+    return {
+        "ticker": co["ticker"], "name": co["name"], "sic": co["sic"], "sic_desc": co["sic_desc"],
+        "exchange": co["exchange"], "country": co.get("country"), "currency": co.get("currency"),
+        "price": ov["price"], "change": ov["change"],
+        "partial": bool(ov["quote"] and ov["quote"].get("partial")),
+        "market_cap": ov["market_cap"], "enterprise_value": ov["enterprise_value"],
+        "returns": ov["returns"], "valuation": ov["valuation"], "margins": ov["margins"],
+        "ttm": ov["ttm"], "balance": ov["balance"], "high_52w": ov["high_52w"], "low_52w": ov["low_52w"],
+        "spark": [round(c, 4) for c in closes], "archived_filings": ov["counts"]["filings_archived"],
+        "filings": ov["counts"]["filings"], "revenue_growth": _yoy(conn, cid, "revenue"),
+    }
+
+
+def watchlist(conn, tiers: set[str] | None = None) -> list[dict]:
     out = []
-    for c in conn.execute("SELECT id, ticker FROM companies ORDER BY ticker").fetchall():
-        try:
-            ov = overview(conn, c["id"])
-        except Exception:  # half-built company — skip rather than break the list
+    for r in conn.execute("SELECT tier, sector, data FROM company_summary ORDER BY ticker"):
+        if tiers and r["tier"] not in tiers:
             continue
-        closes = [r[0] for r in conn.execute(
-            "SELECT close FROM (SELECT date, close FROM prices_daily WHERE company_id=? ORDER BY date DESC LIMIT 120) "
-            "ORDER BY date", (c["id"],))]
-        out.append({
-            "ticker": c["ticker"], "name": ov["company"]["name"], "sic_desc": ov["company"]["sic_desc"],
-            "exchange": ov["company"]["exchange"], "price": ov["price"], "change": ov["change"],
-            "partial": bool(ov["quote"] and ov["quote"].get("partial")),
-            "market_cap": ov["market_cap"], "enterprise_value": ov["enterprise_value"],
-            "returns": ov["returns"], "valuation": ov["valuation"], "margins": ov["margins"],
-            "ttm": ov["ttm"], "balance": ov["balance"], "high_52w": ov["high_52w"], "low_52w": ov["low_52w"],
-            "spark": closes, "archived_filings": ov["counts"]["filings_archived"], "filings": ov["counts"]["filings"],
-            "revenue_growth": _yoy(conn, c["id"], "revenue"),
-        })
+        d = json.loads(r["data"])
+        d.update(tier=r["tier"], sector=r["sector"] or d.get("sic_desc"))
+        out.append(d)
     return out
 
 
@@ -554,3 +567,78 @@ def compare_prices(conn, tickers: list[str], since: str) -> dict:
             b = pts[0][1]
             out[t] = [[d, round(v / b * 100, 3)] for d, v in pts]
     return {"start": start, "series": out}
+
+
+# ------------------------------------------------------------------ segments / earnings
+
+def segments(conn, cid, period: str) -> dict:
+    from ..sources.xbrl_instance import AXIS_LABELS
+    ptype = "quarterly" if period == "quarterly" else "annual"
+    rows = [dict(r) for r in conn.execute(
+        "SELECT metric, axis, member, label, period_end, fy, fp, value, derived, is_subtotal, accession "
+        "FROM segment_lines WHERE company_id=? AND period_type=? ORDER BY period_end", (cid, ptype))]
+    axes: dict[str, dict] = {}
+    for r in rows:
+        a = axes.setdefault(r["axis"], {"axis": r["axis"], "label": AXIS_LABELS.get(r["axis"], r["axis"].split(":")[-1]),
+                                         "metrics": {}})
+        m = a["metrics"].setdefault(r["metric"], {"members": {}, "periods": set()})
+        mem = m["members"].setdefault(r["member"], {"member": r["member"], "label": r["label"], "subtotal_share": 0,
+                                                   "n": 0, "values": {}})
+        mem["values"][r["period_end"]] = {"v": r["value"], "derived": r["derived"], "fy": r["fy"], "fp": r["fp"]}
+        mem["n"] += 1
+        mem["subtotal_share"] += r["is_subtotal"]
+        m["periods"].add(r["period_end"])
+    total = {r["period_end"]: r["value"] for r in conn.execute(
+        "SELECT period_end, value FROM statement_lines WHERE company_id=? AND line='revenue' AND period_type=?", (cid, ptype))}
+    out = []
+    for a in axes.values():
+        metrics = {}
+        for k, m in a["metrics"].items():
+            mems = list(m["members"].values())
+            for mm in mems:
+                mm["is_subtotal"] = mm["subtotal_share"] > mm["n"] / 2
+                del mm["subtotal_share"]
+            mems.sort(key=lambda x: -max((v["v"] for v in x["values"].values()), default=0))
+            metrics[k] = {"periods": sorted(m["periods"]), "members": mems}
+        a["metrics"] = metrics
+        a["n_points"] = sum(len(mm["values"]) for m in metrics.values() for mm in m["members"])
+        out.append(a)
+    order = ["srt:ProductOrServiceAxis", "us-gaap:StatementBusinessSegmentsAxis", "srt:StatementGeographicalAxis"]
+    out.sort(key=lambda a: (order.index(a["axis"]) if a["axis"] in order else 9, -a["n_points"]))
+    return {"period": ptype, "axes": out, "total_revenue": total}
+
+
+def earnings_list(conn, cid) -> dict:
+    rows = []
+    for r in conn.execute("SELECT * FROM earnings WHERE company_id=? ORDER BY filed DESC", (cid,)):
+        d = dict(r)
+        d["metrics"] = json.loads(d["metrics"]) if d["metrics"] else None
+        d["guidance"] = json.loads(d["guidance"]) if d["guidance"] else []
+        rows.append(d)
+    er = [r for r in rows if r["kind"] == "earnings" and r["day"] is not None]
+
+    def avg(xs):
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+    stats = {
+        "n": len(er), "avg_abs_day": avg([abs(r["day"]) for r in er]), "avg_day": avg([r["day"] for r in er]),
+        "up": sum(1 for r in er if r["day"] > 0), "down": sum(1 for r in er if r["day"] < 0),
+        "avg_excess_day": avg([r["excess_day"] for r in er]), "avg_d5": avg([r["d5"] for r in er]),
+        "avg_abs_day_8q": avg([abs(r["day"]) for r in er[:8]]),
+        "biggest_up": max(er, key=lambda r: r["day"], default=None),
+        "biggest_down": min(er, key=lambda r: r["day"], default=None),
+        "follow_through": avg([1.0 if (r["d5"] or 0) * r["day"] > 0 else 0.0 for r in er if r["d5"] is not None]),
+    }
+    for k in ("biggest_up", "biggest_down"):
+        if stats[k]:
+            stats[k] = {"fp": stats[k]["fp"], "fy": stats[k]["fy"], "day": stats[k]["day"], "filed": stats[k]["filed"]}
+    return {"rows": rows, "stats": stats}
+
+
+def window(conn, cid, center: str, before: int = 15, after: int = 25) -> list[list]:
+    """Daily closes around a date (for the earnings mini-chart), rebased to the base close."""
+    pre = conn.execute("SELECT date, close FROM prices_daily WHERE company_id=? AND date<? ORDER BY date DESC LIMIT ?",
+                       (cid, center, before)).fetchall()[::-1]
+    post = conn.execute("SELECT date, close FROM prices_daily WHERE company_id=? AND date>=? ORDER BY date LIMIT ?",
+                        (cid, center, after)).fetchall()
+    return [[r[0], r[1]] for r in pre + post]

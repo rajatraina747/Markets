@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { WatchRow } from '../api'
 import { useApi, useLocal } from '../hooks'
@@ -32,7 +32,10 @@ export default function Screener() {
   const nav = useNavigate()
   const { data, error } = useApi<WatchRow[]>('watchlist')
   const [rules, setRules] = useLocal<Rule[]>('screener-rules', [{ key: 'om', op: '>', v: '0' }])
-  const pass = useMemo(() => (data ?? []).map((r) => {
+  const [sector, setSector] = useState('')
+  const [onlyPass, setOnlyPass] = useState(true)
+  const sectors = useMemo(() => [...new Set((data ?? []).map((r) => r.sector).filter(Boolean) as string[])].sort(), [data])
+  const pass = useMemo(() => (data ?? []).filter((r) => !sector || r.sector === sector).map((r) => {
     const checks = rules.map((ru) => {
       const f = FIELDS.find((x) => x.key === ru.key)!
       const val = f.get(r)
@@ -40,7 +43,7 @@ export default function Screener() {
       return val !== null && val !== undefined && ru.v !== '' && (ru.op === '>' ? val > thr : val < thr)
     })
     return { r, ok: checks.every(Boolean), score: checks.filter(Boolean).length }
-  }).sort((a, b) => b.score - a.score), [data, rules])
+  }).sort((a, b) => b.score - a.score || (b.r.market_cap ?? 0) - (a.r.market_cap ?? 0)), [data, rules, sector])
   if (error) return <div className="err">{error}</div>
   const upd = (i: number, patch: Partial<Rule>) => setRules(rules.map((r, j) => (j === i ? { ...r, ...patch } : r)))
   return (
@@ -62,15 +65,21 @@ export default function Screener() {
         </div>
       </section>
       <section className="panel">
-        <header>Results · {pass.filter((p) => p.ok).length} of {pass.length} pass</header>
+        <header>Results · {pass.filter((p) => p.ok).length} of {pass.length} pass<span className="grow" />
+          <span style={{ display: 'flex', gap: 8, textTransform: 'none', letterSpacing: 0 }}>
+            <select className="input" value={sector} onChange={(e) => setSector(e.target.value)}><option value="">All sectors</option>{sectors.map((x) => <option key={x}>{x}</option>)}</select>
+            <span className={'chip' + (onlyPass ? ' on' : '')} onClick={() => setOnlyPass(!onlyPass)}>passing only</span>
+          </span>
+        </header>
         <table className="t">
-          <thead><tr><th></th><th>Ticker</th><th>Name</th>{FIELDS.map((f) => <th key={f.key} className="n" style={rules.some((r) => r.key === f.key) ? { color: 'var(--gold)' } : undefined}>{f.label}</th>)}</tr></thead>
+          <thead><tr><th></th><th>Ticker</th><th>Name</th><th>Sector</th>{FIELDS.map((f) => <th key={f.key} className="n" style={rules.some((r) => r.key === f.key) ? { color: 'var(--gold)' } : undefined}>{f.label}</th>)}</tr></thead>
           <tbody>
-            {pass.map(({ r, ok, score }) => (
+            {pass.filter((p) => !onlyPass || p.ok).slice(0, 300).map(({ r, ok, score }) => (
               <tr key={r.ticker} className="click" style={{ opacity: ok ? 1 : 0.45 }} onClick={() => nav(`/c/${r.ticker}/overview`)}>
                 <td>{ok ? <span className="up">●</span> : <span className="dimmer">{score}/{rules.length}</span>}</td>
                 <td className="mono gold" style={{ fontWeight: 700 }}>{r.ticker}</td>
-                <td className="dim">{r.name}</td>
+                <td className="dim" style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</td>
+                <td className="dimmer" style={{ fontSize: 12 }}>{r.sector}</td>
                 {FIELDS.map((f) => { const v = f.get(r); return <td key={f.key} className={'n ' + (f.kind === 'pct' ? tone(v) : '')}>{fmtField(f, v)}</td> })}
               </tr>
             ))}

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .. import config
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 RECREATED = False  # set when ensure_schema had to rebuild the file — callers must repopulate every company
 

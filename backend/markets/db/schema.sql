@@ -292,6 +292,66 @@ CREATE TABLE ch_psc (
   ceased        TEXT
 );
 
+-- Segment / product / geography breakdowns from per-filing XBRL instances
+CREATE TABLE segment_lines (
+  company_id    INTEGER NOT NULL,
+  metric        TEXT NOT NULL,     -- revenue | GrossProfit | OperatingIncomeLoss | Assets | ...
+  axis          TEXT NOT NULL,     -- srt:ProductOrServiceAxis, us-gaap:StatementBusinessSegmentsAxis, ...
+  member        TEXT NOT NULL,
+  label         TEXT,
+  period_type   TEXT NOT NULL,     -- annual | quarterly | instant
+  period_start  TEXT,
+  period_end    TEXT NOT NULL,
+  fy            INTEGER,
+  fp            TEXT,
+  value         REAL NOT NULL,
+  filed         TEXT,
+  accession     TEXT,
+  derived       INTEGER DEFAULT 0,
+  is_subtotal   INTEGER DEFAULT 0, -- equals the sum of other members in the same period
+  PRIMARY KEY (company_id, metric, axis, member, period_type, period_end)
+);
+
+-- One row per results / operational-update 8-K (item 2.02), with the market's reaction
+CREATE TABLE earnings (
+  company_id    INTEGER NOT NULL,
+  accession     TEXT NOT NULL,
+  filed         TEXT NOT NULL,
+  accepted_et   TEXT,              -- acceptance time, US/Eastern
+  timing        TEXT,              -- bmo | intraday | amc
+  kind          TEXT,              -- earnings | update
+  period_end    TEXT,              -- quarter the release covers
+  fy INTEGER, fp TEXT,
+  base_date     TEXT, base_close REAL,
+  react_date    TEXT,
+  gap REAL, day REAL, d5 REAL, d20 REAL,
+  excess_day    REAL,              -- day reaction minus the S&P 500 (SPY) over the same window
+  excess_d5     REAL,
+  vol_ratio     REAL,              -- reaction-day volume / prior 20-day average
+  metrics       TEXT,              -- JSON: quarter's key lines with YoY / QoQ
+  guidance      TEXT,              -- JSON: forward-looking sentences from the release (EX-99.1)
+  PRIMARY KEY (company_id, accession)
+);
+
+-- Benchmarks (cross-company): SPY, QQQ, …
+CREATE TABLE benchmark_prices (
+  symbol        TEXT NOT NULL,
+  date          TEXT NOT NULL,
+  close         REAL,
+  adj_close     REAL,
+  PRIMARY KEY (symbol, date)
+);
+
+-- Precomputed watchlist / screener row per company (JSON of the overview summary)
+CREATE TABLE company_summary (
+  company_id    INTEGER PRIMARY KEY,
+  ticker        TEXT,
+  tier          TEXT,
+  sector        TEXT,
+  sic           TEXT,
+  data          TEXT
+);
+
 CREATE TABLE build_log (
   company_id    INTEGER,
   step          TEXT,

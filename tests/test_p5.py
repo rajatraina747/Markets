@@ -126,3 +126,62 @@ class TestCompaniesHouse(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestSegmentsEarnings(unittest.TestCase):
+    INLINE = """<html><ix:header><xbrli:context id="c1"><xbrli:entity><xbrli:segment>
+    <xbrldi:explicitMember dimension="srt:ProductOrServiceAxis">tsla:AutomotiveSalesMember</xbrldi:explicitMember>
+    </xbrli:segment></xbrli:entity><xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period></xbrli:context>
+    <xbrli:context id="c2"><xbrli:entity><xbrli:segment>
+    <xbrldi:explicitMember dimension="srt:ProductOrServiceAxis">tsla:AutomotiveLeasingMember</xbrldi:explicitMember>
+    </xbrli:segment></xbrli:entity><xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period></xbrli:context>
+    <xbrli:context id="c3"><xbrli:entity><xbrli:segment>
+    <xbrldi:explicitMember dimension="srt:ProductOrServiceAxis">tsla:AutomotiveRevenuesMember</xbrldi:explicitMember>
+    </xbrli:segment></xbrli:entity><xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period></xbrli:context>
+    <xbrli:context id="c4"><xbrli:entity><xbrli:segment>
+    <xbrldi:explicitMember dimension="srt:ProductOrServiceAxis">tsla:EnergyMember</xbrldi:explicitMember>
+    </xbrli:segment></xbrli:entity><xbrli:period><xbrli:startDate>2025-01-01</xbrli:startDate><xbrli:endDate>2025-12-31</xbrli:endDate></xbrli:period></xbrli:context>
+    </ix:header>
+    <ix:nonFraction name="us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax" contextRef="c1" unitRef="usd" scale="6" decimals="-6" format="ixt:num-dot-decimal">65,821</ix:nonFraction>
+    <ix:nonFraction name="us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax" contextRef="c2" scale="6" format="ixt:num-dot-decimal">1,712</ix:nonFraction>
+    <ix:nonFraction name="us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax" contextRef="c3" scale="6" format="ixt:num-dot-decimal">67,533</ix:nonFraction>
+    <ix:nonFraction name="us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax" contextRef="c4" scale="6" format="ixt:num-dot-decimal"><span>12,771</span></ix:nonFraction>
+    <ix:nonFraction name="us-gaap:GrossProfit" contextRef="c4" scale="6" sign="-" format="ixt:num-dot-decimal">5</ix:nonFraction>
+    </html>"""
+
+    def test_inline_parse_and_subtotals(self):
+        from markets.normalize import segments
+        from markets.sources import xbrl_instance
+        facts = xbrl_instance.parse(self.INLINE)
+        rev = {f["member"]: f["value"] for f in facts if f["concept"].startswith("Revenue")}
+        self.assertEqual(rev["tsla:AutomotiveSalesMember"], 65_821e6)
+        self.assertEqual(rev["tsla:EnergyMember"], 12_771e6)  # nested tags inside the fact
+        self.assertEqual(next(f["value"] for f in facts if f["concept"] == "GrossProfit"), -5e6)  # sign="-"
+        rows = segments.compute([dict(f, filed="2026-01-29", accession="a") for f in facts], "1231")
+        sub = {r["label"]: r["is_subtotal"] for r in rows if r["metric"] == "revenue"}
+        self.assertEqual(sub, {"Automotive Sales": 0, "Automotive Leasing": 0, "Automotive Revenues": 1, "Energy": 0})
+
+    def test_earnings_timing_and_reaction(self):
+        from markets.normalize import earnings
+        self.assertEqual(earnings.timing_of("2026-10-21T20:41:42.000Z")[0], "amc")   # 16:41 ET
+        self.assertEqual(earnings.timing_of("2026-10-02T13:04:26.000Z")[0], "bmo")   # 09:04 ET
+        bars = [{"date": d, "open": o, "close": c, "volume": 100} for d, o, c in
+                [("2026-10-20", 100, 100), ("2026-10-21", 100, 100), ("2026-10-22", 90, 95)] +
+                [(f"2026-10-{23 + i}", 95, 95) for i in range(5)]]
+        q = {"2026-09-30": {"revenue": 10.0}, "2025-09-30": {"revenue": 8.0}}
+        rows = earnings.compute([{"accession": "A", "filed": "2026-10-21", "accepted": "2026-10-21T20:41:42.000Z"},
+                                 {"accession": "B", "filed": "2026-10-02", "accepted": "2026-10-02T13:04:26.000Z"}],
+                                bars, q, [], {}, "1231")
+        r = next(x for x in rows if x["accession"] == "A")
+        self.assertEqual((r["kind"], r["base_date"], r["react_date"], r["fp"]), ("earnings", "2026-10-21", "2026-10-22", "Q3"))
+        self.assertAlmostEqual(r["gap"], -0.10)
+        self.assertAlmostEqual(r["day"], -0.05)
+        self.assertEqual(json.loads(r["metrics"])["revenue"]["yoy"], 0.25)
+        self.assertEqual(next(x for x in rows if x["accession"] == "B")["kind"], "update")  # 2 days after quarter end
+
+    def test_guidance_sentences(self):
+        from markets.normalize import earnings
+        txt = ("Highlights 03 Financial Summary 04 Outlook 09 Photos 10 Key Metrics 23\n"
+               "Revenue grew 10%. We expect volume growth to resume in 2027 as new models launch.\n"
+               "This release contains forward-looking statements; we expect risks and uncertainties.")
+        self.assertEqual(earnings.guidance_sentences(txt), ["We expect volume growth to resume in 2027 as new models launch."])

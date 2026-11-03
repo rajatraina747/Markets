@@ -196,3 +196,90 @@ def build_uk(conn, cid, reg, base) -> int:
                      (cid, p["name"], p["kind"], p["natures"], p["notified"], p["ceased"]))
         n += 1
     return n
+
+
+# ------------------------------------------------------------------ breadth / segments / earnings
+
+def build_segments(conn, cid, reg, base) -> int:
+    from ..sources import edgar_filings as ef, xbrl_instance as xi
+    from . import segments as seg
+    _wipe(conn, cid, "segment_lines")
+    facts = []
+    for f in conn.execute("SELECT accession, filed, raw_path FROM filings WHERE company_id=? AND form IN "
+                          "('10-K','10-Q','10-K/A','10-Q/A','10-KT') AND filed >= '2009-06-01' ORDER BY filed",
+                          (cid,)).fetchall():
+        inst = base / "raw" / xi.rel_path(f["accession"])
+        if f["raw_path"]:
+            got = xi.from_submission(archive.read_raw(base / f["raw_path"]))
+        elif inst.exists():
+            got = xi.parse(archive.read_raw(inst).decode("utf-8", "replace"))
+        else:
+            continue
+        for g in got:
+            g.update(filed=f["filed"], accession=f["accession"])
+        facts += got
+    fye = conn.execute("SELECT fiscal_year_end FROM companies WHERE id=?", (cid,)).fetchone()[0]
+    rows = seg.compute(facts, fye)
+    cols = ["metric", "axis", "member", "label", "period_type", "period_start", "period_end", "fy", "fp", "value",
+            "filed", "accession", "derived", "is_subtotal"]
+    conn.executemany(f"INSERT OR REPLACE INTO segment_lines (company_id,{','.join(cols)}) VALUES "
+                     f"(?,{','.join('?' * len(cols))})", [[cid] + [r[c] for c in cols] for r in rows])
+    return len(rows)
+
+
+def build_earnings(conn, cid, reg, base) -> int:
+    from ..normalize import text as tx
+    from ..sources import edgar_filings as ef, prices as px
+    from . import earnings as er
+    _wipe(conn, cid, "earnings")
+    filings = [dict(r) for r in conn.execute(
+        "SELECT accession, filed, accepted, raw_path FROM filings WHERE company_id=? AND form IN ('8-K','8-K/A') "
+        "AND items LIKE '%2.02%'", (cid,))]
+    if not filings:
+        return 0
+    bars = [dict(r) for r in conn.execute("SELECT date, open, close, volume FROM prices_daily WHERE company_id=? "
+                                          "ORDER BY date", (cid,))]
+    quarters: dict[str, dict] = {}
+    for r in conn.execute("SELECT line, period_end, value FROM statement_lines WHERE company_id=? AND "
+                          "period_type='quarterly'", (cid,)):
+        quarters.setdefault(r["period_end"], {})[r["line"]] = r["value"]
+    spy = [dict(r) for r in conn.execute("SELECT date, close FROM benchmark_prices WHERE symbol='SPY' ORDER BY date")]
+    texts = {}
+    for f in filings:
+        if not f["raw_path"]:
+            continue
+        docs = ef.split_documents(archive.read_raw(base / f["raw_path"]))
+        ex = next((d for d in docs if d["doc_type"].upper().startswith("EX-99") and d["kind"] in ("html", "text")), None)
+        if ex:
+            texts[f["accession"]] = tx.plain_text(ex["body"], ex["kind"], 400_000)
+    fye = conn.execute("SELECT fiscal_year_end FROM companies WHERE id=?", (cid,)).fetchone()[0]
+    rows = er.compute(filings, bars, quarters, spy, texts, fye)
+    cols = ["accession", "filed", "accepted_et", "timing", "kind", "period_end", "fy", "fp", "base_date", "base_close",
+            "react_date", "gap", "day", "d5", "d20", "excess_day", "excess_d5", "vol_ratio", "metrics", "guidance"]
+    conn.executemany(f"INSERT OR REPLACE INTO earnings (company_id,{','.join(cols)}) VALUES (?,{','.join('?' * len(cols))})",
+                     [[cid] + [r[c] for c in cols] for r in rows])
+    return len(rows)
+
+
+def build_summary(conn, cid, reg, base) -> int:
+    """Precompute the watchlist/screener row (500 live overviews per request would be slow)."""
+    import json as _json
+    from .. import registry
+    from ..api import queries
+    row = queries.summary_row(conn, cid)
+    if row is None:
+        return 0
+    conn.execute("INSERT OR REPLACE INTO company_summary VALUES (?,?,?,?,?,?)",
+                 (cid, reg["ticker"], registry.tier(reg), reg.get("sector"), row.get("sic"), _json.dumps(row)))
+    return 1
+
+
+def build_benchmarks(conn, cid, reg, base) -> int:
+    from ..sources import prices as px
+    conn.execute("DELETE FROM benchmark_prices")
+    n = 0
+    for sym, bars in px.load_benchmarks().items():
+        conn.executemany("INSERT OR REPLACE INTO benchmark_prices VALUES (?,?,?,?)",
+                         [(sym, b["date"], b["close"], b["adj_close"]) for b in bars])
+        n += len(bars)
+    return n
