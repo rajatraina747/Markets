@@ -53,7 +53,6 @@
 - [ ] Get a free Companies House key → enable UK officers/PSCs/filings for RR.L.
 - [ ] UK financials: iXBRL accounts from Companies House filings (where filed electronically).
 - [ ] Alerts — new 8-K / insider buy / 13D on a watched ticker → macOS notification or phone.
-- [ ] Earnings view — results 8-K exhibit 99.1 side by side with the quarter's statements.
 - [ ] Segment hierarchy from the presentation linkbase (fixes the rare overlapping-member periods).
 - [ ] Earnings: structured guidance numbers (ranges for deliveries, capex, margins) when stated.
 - [ ] Workspace: more widgets (journal, screener, compare), drag-to-swap, keyboard focus per panel.
