@@ -7,25 +7,65 @@ import sys
 from . import config, db, registry
 from .net import Fetcher
 
-SOURCES = ["submissions", "xbrl", "prices", "shorts", "news", "filings"]
+LITE_FORMS = {"SC 13G", "SC 13G/A", "SC 13D", "SC 13D/A", "SCHEDULE 13G", "SCHEDULE 13G/A", "SCHEDULE 13D",
+              "SCHEDULE 13D/A", "DEF 14A"}
+SOURCES = ["submissions", "xbrl", "prices", "shorts", "news", "macro", "13f", "filings"]
 
 
 def cmd_add(a) -> int:
-    rec = registry.add(a.ticker, Fetcher())
-    print(f"tracking {rec['ticker']}: {rec['name']} (CIK {rec['cik']}, {rec.get('exchange')})")
+    rec = registry.add(a.ticker, Fetcher(), lite=True if a.lite else False if a.full else None, ch_number=a.ch)
+    if rec.get("cik"):
+        print(f"tracking {rec['ticker']}: {rec['name']} (CIK {rec['cik']}, {rec.get('exchange')})")
+    else:
+        print(f"tracking {rec['ticker']} ({rec.get('exchange')}, non-SEC): prices + news + macro"
+              + (f" + Companies House {rec['ch_number']}" if rec.get("ch_number") else
+                 " — add --ch <Companies House number> for officers, PSCs and filings"))
+    if a.lite:
+        print("lite: prices + financials + filing index only (no 2 GB document archive); "
+              f"upgrade later with ./markets add {rec['ticker']} --full")
     print(f"next: ./markets update {rec['ticker']}")
     return 0
 
 
 def cmd_update(a) -> int:
+    if a.ticker.lower() == "all":
+        rc = 0
+        for i, t in enumerate(sorted(registry.load())):
+            print(f"=== {t}", file=sys.stderr)
+            a2 = argparse.Namespace(**{**vars(a), "ticker": t})
+            if i:  # shared sources (macro, 13F) only need fetching once per run
+                only = set((a.only or ",".join(SOURCES)).split(",")) - {"macro", "13f"}
+                a2.only = ",".join(sorted(only))
+            try:
+                rc |= cmd_update(a2)
+            except Exception as e:  # one ticker failing never stops the rest
+                print(f"  {t} FAILED: {e}", file=sys.stderr)
+                rc = 1
+        return rc
     from .normalize import build
     from .sources import edgar_filings, edgar_submissions, edgar_xbrl, prices
     reg = registry.get(a.ticker)
     base = config.company_dir(reg["ticker"])
     f = Fetcher()
     only = set(a.only.split(",")) if a.only else set(SOURCES)
+    lite_forms = None
     if a.skip_filings:
         only.discard("filings")
+    elif reg.get("lite") and not a.forms:
+        # lite: ownership + proxy filings only (CUSIP → 13F, >5% holders, pay) — a few MB, not GBs
+        lite_forms = ",".join(sorted(LITE_FORMS))
+    if not reg.get("cik"):
+        # non-SEC listing: no EDGAR sources; Companies House instead when we know the number
+        if reg.get("ch_number") and not a.only:
+            only.add("ch")
+        only &= {"prices", "news", "macro", "ch"}
+    if "ch" in only:
+        from .sources import companies_house
+        print("Companies House…", file=sys.stderr)
+        try:
+            companies_house.fetch(base, reg["ch_number"], f)
+        except Exception as e:
+            print(f"  Companies House skipped: {e}", file=sys.stderr)
     if "submissions" in only or "filings" in only:
         print("submissions…", file=sys.stderr)
         edgar_submissions.fetch(base, reg["cik"], f)
@@ -36,6 +76,8 @@ def cmd_update(a) -> int:
         print("prices…", file=sys.stderr)
         snap = prices.fetch(base, reg["ticker"], f)
         try:
+            if not reg.get("cik"):
+                raise RuntimeError("Nasdaq cross-check is US-only")
             from . import archive
             nsnap = prices.fetch_nasdaq(base, reg["ticker"], f)
             rec = prices.reconcile(prices.parse_yahoo(archive.read_raw(snap))["bars"],
@@ -55,13 +97,24 @@ def cmd_update(a) -> int:
         from .sources import news
         print("news (Google News RSS + GDELT)…", file=sys.stderr)
         try:
-            news.fetch(base, reg["ticker"], reg["name"], f)
+            news.fetch(base, reg["ticker"].split(".")[0], reg.get("name") or _quote_name(base) or reg["ticker"], f)
         except Exception as e:
             print(f"  news skipped: {e}", file=sys.stderr)
+    if "macro" in only:
+        from .sources import macro
+        print("macro (FRED + BoE)…", file=sys.stderr)
+        macro.fetch(f)
+    if "13f" in only:
+        from .sources import sec_13f
+        print("13F data sets (shared, ~90 MB each, only new ones)…", file=sys.stderr)
+        try:
+            sec_13f.fetch(f, periods=a.periods_13f)
+        except Exception as e:
+            print(f"  13F skipped: {e}", file=sys.stderr)
     if "filings" in only:
         main, pages = edgar_submissions.load_latest(base, reg["cik"])
         rows = edgar_submissions.parse_filings(main, pages)
-        forms = set(a.forms.split(",")) if a.forms else None
+        forms = set((a.forms or lite_forms).split(",")) if (a.forms or lite_forms) else None
         print(f"filings: {len(rows)} on EDGAR…", file=sys.stderr)
         st = edgar_filings.download_all(base, reg["cik"], rows, f, forms=forms, limit=a.limit)
         print(f"  downloaded {st['ok']}/{st['todo']} ({st['bytes'] / 1e6:,.0f} MB), "
@@ -70,6 +123,13 @@ def cmd_update(a) -> int:
         print("rebuild…", file=sys.stderr)
         build.rebuild(reg)
     return 0
+
+
+def _quote_name(base) -> str | None:
+    from . import archive
+    from .sources import prices
+    snap = archive.latest_snapshot(base, prices.SOURCE_Y, "chart_1d.json")
+    return prices.parse_yahoo(archive.read_raw(snap))["meta"]["long_name"] if snap else None
 
 
 def cmd_rebuild(a) -> int:
@@ -90,7 +150,7 @@ def cmd_status(a) -> int:
     conn = db.ensure_schema()
     for t in ([a.ticker.upper()] if a.ticker else sorted(reg)):
         cid = db.company_id(conn, t)
-        print(f"{t}  {reg[t]['name']}  CIK {reg[t]['cik']}")
+        print(f"{t}  {reg[t].get('name') or ''}  " + (f"CIK {reg[t]['cik']}" if reg[t].get("cik") else reg[t].get("exchange") or ""))
         if cid is None:
             print("  (not built yet — ./markets update", t + ")")
             continue
@@ -122,14 +182,19 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("add", help="start tracking a ticker")
     s.add_argument("ticker")
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--lite", action="store_true", help="skip the full filing archive (peers, quick looks)")
+    g.add_argument("--full", action="store_true", help="(re)enable the full filing archive")
+    s.add_argument("--ch", help="UK Companies House number (non-SEC listings, needs MARKETS_CH_KEY)")
     s.set_defaults(fn=cmd_add)
-    s = sub.add_parser("update", help="fetch new raw data, then rebuild")
+    s = sub.add_parser("update", help="fetch new raw data, then rebuild (ticker or 'all')")
     s.add_argument("ticker")
     s.add_argument("--only", help=f"comma list of {','.join(SOURCES)}")
     s.add_argument("--skip-filings", action="store_true", help="skip the (slow) filing archive")
     s.add_argument("--forms", help="only download these form types, e.g. 10-K,10-Q")
     s.add_argument("--limit", type=int, help="download at most N filings this run")
     s.add_argument("--no-rebuild", action="store_true")
+    s.add_argument("--periods-13f", type=int, default=8, help="how many quarterly 13F data sets to keep (default 8 ≈ 2y)")
     s.set_defaults(fn=cmd_update)
     s = sub.add_parser("rebuild", help="rebuild markets.db from raw (no network)")
     s.add_argument("ticker", nargs="?")

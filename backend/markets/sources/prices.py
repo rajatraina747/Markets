@@ -72,9 +72,22 @@ def parse_yahoo(raw: bytes) -> dict:
                      "volume": int(v or 0)})
     if not bars:
         raise PriceSchemaError("yahoo returned no bars")
-    for b in bars:
-        if not (b["low"] <= min(b["open"], b["close"]) and b["high"] >= max(b["open"], b["close"])
-                and b["low"] > 0):
+    reg = ((meta.get("currentTradingPeriod") or {}).get("regular") or {})
+    mtime = int(meta.get("regularMarketTime") or 0)
+    in_session = bool(reg.get("start") and reg.get("end") and reg["start"] <= mtime < reg["end"])
+    for i, b in enumerate(bars):
+        ok = b["low"] <= min(b["open"], b["close"]) and b["high"] >= max(b["open"], b["close"]) and b["low"] > 0
+        if ok or b["low"] <= 0:
+            if not ok:
+                raise PriceSchemaError(f"implausible bar {b}")
+            continue
+        gap = max(max(b["open"], b["close"]) - b["high"], b["low"] - min(b["open"], b["close"]), 0) / b["close"]
+        if (i == len(bars) - 1 and in_session) or gap <= 0.01:
+            # live snapshots and old vendor ticks are sometimes off by a hair (open > high) — repair;
+            # anything bigger is real corruption and fails loudly
+            b["high"] = max(b["high"], b["open"], b["close"])
+            b["low"] = min(b["low"], b["open"], b["close"])
+        else:
             raise PriceSchemaError(f"implausible bar {b}")
     ev = res.get("events") or {}
     splits = [{"date": _d(s["date"], off), "numerator": float(s["numerator"]),
@@ -83,10 +96,7 @@ def parse_yahoo(raw: bytes) -> dict:
     divs = [{"date": _d(d["date"], off), "amount": float(d["amount"])}
             for d in (ev.get("dividends") or {}).values()]
     # In-session fetch: the newest bar is a live snapshot, not a close (Ember lesson, 2026-07-09).
-    reg = ((meta.get("currentTradingPeriod") or {}).get("regular") or {})
-    mtime = int(meta.get("regularMarketTime") or 0)
-    partial = bool(reg.get("start") and reg.get("end") and reg["start"] <= mtime < reg["end"]
-                   and bars and bars[-1]["date"] == _d(reg["start"], off))
+    partial = bool(in_session and bars and bars[-1]["date"] == _d(reg["start"], off))
     return {
         "meta": {
             "partial": partial,

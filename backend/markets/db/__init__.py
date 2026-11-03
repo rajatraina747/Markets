@@ -10,7 +10,7 @@ from pathlib import Path
 
 from .. import config
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 5
 SCHEMA_SQL = Path(__file__).with_name("schema.sql")
 
 

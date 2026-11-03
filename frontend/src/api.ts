@@ -100,6 +100,7 @@ export interface Ownership {
   holders: Holder[]
   short_interest: { date: string; shares_short: number; avg_daily_vol: number; days_to_cover: Num }[]
   shares_outstanding: Num
+  psc: { name: string; kind: string; natures: string; notified: string | null; ceased: string | null }[]
 }
 
 export interface NewsItem { url: string; published: string | null; source: string | null; title: string; feed: string }
@@ -136,3 +137,31 @@ export async function send<T>(method: 'POST' | 'DELETE', path: string, body?: un
   if (!r.ok) throw new Error(j?.error || r.statusText)
   return j as T
 }
+
+// ---------------------------------------------------------------- P4.5 / P5
+
+export interface SctRow { fy: number; name: string; position: string | null; salary: Num; bonus: Num; stock: Num; option: Num; non_equity: Num; pension: Num; other: Num; total: Num; accession: string }
+export interface DirRow { proxy_year: number; name: string; fees: Num; stock: Num; option: Num; other: Num; total: Num; accession: string }
+export interface ProxyComp { sct: SctRow[]; directors: DirRow[] }
+
+export interface InstHolder { manager: string; manager_cik: string; shares: number; value: number; change: Num; pct_of_shares: Num }
+export interface Institutions {
+  quarters: { period: string; managers: number; shares: number; value: number; pct_of_shares: Num }[]
+  last?: string; prev?: string | null
+  top: InstHolder[]
+  movers: { manager: string; delta: number; now: number; status: 'new' | 'exited' | 'changed' }[]
+  options: { period: string; put_call: string; managers: number; shares: number; value: number }[]
+  shares_outstanding: Num
+}
+
+export interface MacroSeries { label: string; unit: string; group: string; points: [string, number][] }
+export type Macro = Record<string, MacroSeries>
+
+export interface WatchRow {
+  ticker: string; name: string; sic_desc: string | null; exchange: string | null
+  price: Num; change: Num; partial: boolean; market_cap: Num; enterprise_value: Num
+  returns: Record<string, Num>; valuation: Record<string, Num>; margins: Record<string, Num>
+  ttm: Record<string, Num>; balance: Record<string, Num>; high_52w: Num; low_52w: Num
+  spark: number[]; archived_filings: number; filings: number; revenue_growth: Num
+}
+export interface CompareRes { start?: string; series: Record<string, [string, number][]> }

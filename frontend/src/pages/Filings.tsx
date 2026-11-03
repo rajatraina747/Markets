@@ -36,7 +36,9 @@ export function FilingReader({ t, acc, docSeq, highlight }: { t: string; acc: st
         <span className="mono dimmer" style={{ textTransform: 'none', letterSpacing: 0 }}>filed {date(f.filed)}{f.report_date ? ` · period ${date(f.report_date)}` : ''}</span>
         <a href={data.sec_url} target="_blank" rel="noreferrer" style={{ textTransform: 'none', letterSpacing: 0 }}>SEC ↗</a>
       </header>
-      {!f.raw_path ? <div className="empty">Not archived yet — run <code>./markets update {t}</code></div> : (
+      {!f.raw_path ? (f.accession.startsWith('CH-') && f.primary_doc
+        ? <div className="empty">Companies House filing · <a href={f.primary_doc} target="_blank" rel="noreferrer">open the PDF at Companies House ↗</a></div>
+        : <div className="empty">Not archived {t.includes('.') ? '(non-SEC company)' : <>yet — run <code>./markets update {t}</code>{' '}(lite tickers archive only ownership + proxy filings; <code>./markets add {t} --full</code> for everything)</>}</div>) : (
         <>
           <div className="doclist">
             {docs.map((d) => (

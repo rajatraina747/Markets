@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.rajatraina.markets.update</string>
+
+    <!-- Nightly refresh of every tracked company: new filings, prices, facts, shorts,
+         news, macro, new 13F data sets — then rebuild markets.db. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/python3</string>
+        <string>/Users/you/Documents/Markets/markets</string>
+        <string>update</string>
+        <string>all</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/you/Documents/Markets</string>
+
+    <!-- US close (4pm ET) = 01:30 IST in EDT, 02:30 IST in EST. 04:15 IST Tue–Sat covers
+         Mon–Fri sessions in both regimes and runs after Ember's 03:30 job. A sleeping Mac
+         runs it on next wake. -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>4</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>4</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>4</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>4</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>6</integer><key>Hour</key><integer>4</integer><key>Minute</key><integer>15</integer></dict>
+    </array>
+
+    <!-- stdio must live OUTSIDE ~/Documents: launchd can't open TCC-protected paths for
+         stdio (job dies with exit 78). -->
+    <key>StandardOutPath</key>
+    <string>/Users/you/Library/Logs/markets/update.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/you/Library/Logs/markets/update.log</string>
+
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>5</integer>
+</dict>
+</plist>

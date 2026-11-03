@@ -204,3 +204,6 @@ select.input { padding-right: 24px; }
 .legend-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .person { display: grid; grid-template-columns: 1fr auto; gap: 4px; }
 .badges { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.card-hover { transition: border-color .15s, transform .15s; }
+.card-hover:hover { border-color: var(--gold); transform: translateY(-1px); }

@@ -1,86 +1,168 @@
-# Markets
+<div align="center">
 
-A £0, single-company research terminal: everything public about a company in one
-place, stored cleanly, viewable in an interactive local dashboard. Starts with **TSLA**.
+<img src="frontend/public/favicon.svg" width="72" alt="" />
 
-> Research and paper-trading aid, not financial advice. Data is free and public:
-> delayed/daily, not real-time. It is not a trading edge on its own.
+# MARKETS
 
-## Quick start
+**A £0 Bloomberg-style research terminal, for one company at a time.**
+
+Every SEC filing, every XBRL fact, every insider trade, every 13F holder, decades of prices —<br/>
+archived locally, normalized into SQLite, explored in a fast dark dashboard.
+
+![python](https://img.shields.io/badge/python-3.10%2B%20stdlib%20only-d4af37?style=flat-square&labelColor=0d1015)
+![react](https://img.shields.io/badge/react-vite%20%2B%20ts-d4af37?style=flat-square&labelColor=0d1015)
+![cost](https://img.shields.io/badge/data%20cost-%C2%A30-2fbf71?style=flat-square&labelColor=0d1015)
+![tests](https://img.shields.io/badge/tests-offline%20unittest-5aa9ff?style=flat-square&labelColor=0d1015)
+![offline](https://img.shields.io/badge/runs-100%25%20local-a68bff?style=flat-square&labelColor=0d1015)
+
+<img src="docs/screenshots/overview.png" alt="Overview: price chart with filing, earnings and insider markers, key stats, returns" width="100%" />
+
+</div>
+
+> [!IMPORTANT]
+> Research and paper-trading tool, **not financial advice**. Data is free and public — daily /
+> delayed, not real-time. A terminal is not an edge; the habit of writing a thesis and a stop
+> *before* you trade is. That's what the Journal page is for.
+
+---
+
+## ⚡ Quick start
 
 ```sh
-./markets add TSLA          # resolve ticker → SEC CIK, start tracking
-./markets update TSLA       # fetch everything new, then rebuild the DB
-./markets serve --open      # dashboard at http://localhost:5800
+./markets add TSLA               # resolve ticker → SEC CIK, start tracking
+./markets update TSLA            # fetch everything new, then rebuild the database
+./markets serve --open           # → http://localhost:5800
 ```
 
-First `update` downloads the full filing archive (~1,760 filings, ~2 GB raw / ~0.8 GB
-gzipped, ~30 min at SEC's rate limit). Later updates only fetch what's new.
-`--skip-filings` for a fast refresh of prices + financials only.
+| Want to… | Run |
+|---|---|
+| Track a peer without the 2 GB archive | `./markets add GM --lite` |
+| Track a London listing | `./markets add RR.L --ch 07524813` *(Companies House needs a free key in `MARKETS_CH_KEY`)* |
+| Refresh everything | `./markets update all` |
+| Fast refresh (no filings) | `./markets update TSLA --skip-filings` |
+| Rebuild the DB from the archive, offline | `./markets rebuild` |
+| See what's archived | `./markets status` |
+| Nightly auto-update (Tue–Sat 04:15) | `scripts/nightly.sh install` · `status` · `log` · `uninstall` |
 
-Frontend (only needed after UI changes): `cd frontend && npm install && npm run build`.
-Dev mode with hot reload: `./markets serve` + `cd frontend && npm run dev` → :5801.
+First full `update` of a company downloads its entire filing history (TSLA: 1,763 filings,
+1.9 GB raw → ~0.6 GB gzipped, ~30 min at SEC's rate limit). After that, only what's new.
 
-## What's in it (per company)
+---
 
-| Data | Source | Notes |
+## 🗂️ What you get — per company
+
+| | Data | Free source |
 |---|---|---|
-| Profile, former names, full filing index | SEC EDGAR submissions API | every filing since 2005 |
-| **Every filing, every document & exhibit** | EDGAR full submission `.txt` | immutable, gzipped; images/PDFs decoded on demand |
-| All XBRL financial facts | SEC companyfacts API | ~24k facts for TSLA, 2009→ |
-| Income / balance / cash-flow statements | normalized from XBRL | restatements: latest filing wins; Q4 & CF quarters derived |
-| Daily prices since IPO, splits, dividends | Yahoo chart API | cross-checked against Nasdaq on each update |
-| Insiders: people, roles, every Form 3/4/5 txn | Form 3/4/5 XML | split-adjusted shares & prices |
-| Event timeline | 8-K items, filings, splits, insider trades | drives chart markers |
-| Full-text search over all filings | SQLite FTS5 | phrases, prefix*, AND/OR |
-| >5% holders (13D/13G) | archived Schedule 13D/G filings | XML (2024+), HTML and text cover pages |
-| Short interest | FINRA consolidated short interest API | bi-monthly, split-adjusted |
-| Pay vs performance | proxy-statement `ecd:` XBRL | CEO / NEO comp, TSR |
-| News headlines | Google News RSS + GDELT | accumulates with every update |
-| **Your journal** | you | `data/journal.db` — notes + paper trades; back this up |
+| 📜 | **Every filing, every exhibit**, readable offline | SEC EDGAR full-submission archive |
+| 🧮 | **Income / balance / cash-flow statements**, annual + quarterly, restatement-aware | SEC XBRL companyfacts |
+| 📈 | **Daily prices since IPO**, splits, dividends — cross-checked against a second feed | Yahoo chart API ⟷ Nasdaq |
+| 🕴️ | **Insiders** — every Form 3/4/5 transaction, holdings over time | EDGAR ownership XML |
+| 🏦 | **13F institutions** — who holds it, who's buying, put/call positioning | SEC quarterly 13F data sets |
+| 🐋 | **>5 % holders** (13D/13G) across three generations of format | EDGAR Schedule 13D/G |
+| 💰 | **Executive & director pay** — summary comp table, pay-vs-performance | Proxy (DEF 14A) HTML + `ecd:` XBRL |
+| 🩳 | **Short interest**, days to cover | FINRA consolidated short interest |
+| 📰 | **News headlines**, accumulating every update | Google News RSS + GDELT |
+| 🌦️ | **Macro context** — rates, curve, CPI, jobs, VIX, oil, dollar, BoE | FRED + Bank of England |
+| 🔎 | **Full-text search** over every filing | SQLite FTS5 |
+| ✍️ | **Your journal** — notes + paper trades with P&L and R-multiples | you |
 
-## Dashboard
+## 🖥️ The dashboard
 
-- **Overview** — candles/line/area, 50/200 MA, log scale, event markers (results,
-  10-K/Q, 8-K, insider buys/sells, splits) → click to open the filing; key stats,
-  valuation, margins, returns, quarterly revenue/profit/margins, recent events.
-- **Financials** — annual/quarterly statements with sparklines; click a row to chart it
-  with growth; hover a cell for its source XBRL tag; ratios table.
-- **Filings** — filter the whole archive by group/year/text; read any document or
-  exhibit locally (sandboxed), original or extracted text.
-- **Search** — full-text across everything, hits by year, highlighted reader.
-- **People** — every insider, roles, tenure, holdings over time, every transaction; pay vs performance.
-- **Ownership** — >5% holders over time, short interest vs price.
-- **News** — archived headlines, coverage vs price, filter by source.
-- **10-K compare** — pick two years and an Item (Risk Factors, MD&A, …): what was added, removed, reworded.
-- **Journal** — paper trades with thesis/stop/target, P&L and R; notes per company.
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/financials.png" alt="Financials" /><br/><b>Financials</b> — statements with sparklines; click a row to chart it, double-click a cell to audit every filing behind the number.</td>
+<td width="50%"><img src="docs/screenshots/compare.png" alt="10-K compare" /><br/><b>10-K compare</b> — pick two years and an Item (Risk Factors, MD&A…): what was added, removed, reworded.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/ownership.png" alt="Ownership" /><br/><b>Ownership</b> — 13F institutions, biggest movers, >5 % holders over time, short interest vs price.</td>
+<td><img src="docs/screenshots/search.png" alt="Search" /><br/><b>Search</b> — full text across every 10-K, 10-Q, 8-K, proxy and exhibit, with a highlighted reader.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/watchlist.png" alt="Watchlist" /><br/><b>Watchlist</b> — every tracked company at a glance; sortable side-by-side table.</td>
+<td><img src="docs/screenshots/peers.png" alt="Peers" /><br/><b>Compare peers</b> — total-return race + fundamentals, best in each row highlighted.</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/people.png" alt="People" /><br/><b>People</b> — insiders, their trades and holdings; summary comp & director pay.</td>
+<td><img src="docs/screenshots/macro.png" alt="Macro" /><br/><b>Macro</b> — the weather every stock trades in, with your company overlaid on rates and VIX.</td>
+</tr>
+</table>
 
-Keys: `/` or `⌘K` palette · `g o` overview · `g f` financials · `g l` filings · `g s` search ·
-`g p` people · `g w` ownership · `g n` news · `g c` 10-K compare · `g j` journal.
+Also: **Filings** reader (every document & exhibit, sandboxed), **News**, **Screener**, **Journal**.
 
-## Layout
+**Keyboard:** `/` or `⌘K` palette · `g o` overview · `g f` financials · `g l` filings · `g s` search ·
+`g p` people · `g w` ownership · `g n` news · `g c` 10-K compare · `g j` journal ·
+`g h` watchlist · `g v` peers · `g x` screener · `g m` macro
+
+---
+
+## 🧱 How it works
+
+```mermaid
+flowchart LR
+  subgraph free["Free public sources"]
+    SEC[SEC EDGAR<br/>filings · XBRL · 13F]
+    PX[Yahoo ⟷ Nasdaq<br/>prices]
+    FINRA[FINRA<br/>short interest]
+    NEWS[Google News · GDELT]
+    MAC[FRED · Bank of England]
+    CH[Companies House]
+  end
+  free -->|net.py<br/>rate-limited, retried| RAW[("raw archive<br/>immutable · gzipped<br/>manifest.jsonl")]
+  RAW -->|pure parsers<br/>./markets rebuild| DB[("markets.db<br/>SQLite + FTS5<br/>disposable")]
+  DB --> API[stdlib JSON API<br/>127.0.0.1:5800]
+  API --> UI[React dashboard]
+  UI <-->|notes · paper trades| J[("journal.db<br/>yours — back it up")]
+```
+
+Three rules keep it trustworthy:
+
+1. **The raw archive is the source of truth and is never edited.** Filings are write-once;
+   changing sources get one dated snapshot per day; every fetch is logged with its SHA-256.
+2. **The database is disposable.** `./markets rebuild` regenerates it from the archive with zero
+   network in about a minute — so a parser fix is free and history is never lost.
+3. **Your data is separate.** Notes and trades live in `journal.db` (plus an append-only
+   `journal.log.jsonl`), never in the rebuildable store.
+
+<details>
+<summary><b>Project layout</b></summary>
 
 ```
-markets                 CLI (add / update / rebuild / status / serve)
+markets                  CLI — add / update / rebuild / status / serve
 backend/markets/
-  net.py                the only network code (rate limits, retries)
-  archive.py            immutable raw archive + manifest
-  sources/              one module per source: fetch() + pure parse()
-  normalize/            raw → SQLite build steps (statements, insiders, events, FTS)
-  db/schema.sql         derived-store schema
-  api/                  stdlib HTTP JSON API + static frontend
-frontend/               React + Vite + TS (lightweight-charts, ECharts, vendored fonts)
-tests/                  offline unittest suite on trimmed real fixtures
-data/                   (gitignored)
-  companies.json        tracked tickers
-  companies/TSLA/raw/   the archive — source of truth, never edited
-  companies/TSLA/manifest.jsonl   every fetch: url, time, sha256, bytes
-  markets.db            derived — `./markets rebuild` recreates it with zero network
-  journal.db            YOURS — notes & paper trades (not rebuildable; back it up)
+  net.py                 the only network code (per-host rate limits, retries, gzip)
+  archive.py             immutable raw archive + manifest
+  sources/               one module per source: fetch() + pure parse()
+    edgar_*.py  form4.py  ownership_13dg.py  proxy.py  sec_13f.py
+    prices.py  short_interest.py  news.py  macro.py  companies_house.py
+  normalize/             raw → SQLite build steps (statements, insiders, events, FTS…)
+  db/schema.sql          derived-store schema (versioned; stale DBs are recreated)
+  journal.py             user data (journal.db)
+  api/                   stdlib HTTP server + query layer
+frontend/                React + Vite + TS · lightweight-charts · ECharts · vendored fonts
+launchd/ scripts/        nightly update job
+tests/                   offline unittest suite on trimmed real payloads
+docs/                    screenshots
+data/                    (gitignored) companies/<T>/raw · reference/ · markets.db · journal.db
 ```
+</details>
 
-## Tests
+<details>
+<summary><b>Honest limits</b></summary>
+
+- No real-time ticks; no broker consensus estimates — neither is free.
+- 13F data sets are kept for the last ~2 years (8 quarters, ~90 MB each, shared by all companies).
+- Older 13G cover pages are parsed from free text; a few (e.g. FMR's) don't expose a percentage.
+- Company-specific XBRL extensions aren't in companyfacts (e.g. Tesla's own CF D&A tag after 2018).
+- Proxy tables are parsed from HTML heuristically; every row is checked to sum to its total.
+- UK companies: prices + news + macro work out of the box; Companies House needs a free API key.
+</details>
+
+## 🧪 Development
 
 ```sh
-python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests      # offline, ~0.1 s
+cd frontend && npm install && npm run build   # rebuild the UI after changes
+cd frontend && npm run dev                 # hot reload on :5801 (proxies /api → :5800)
 ```
+
+See [ROADMAP.md](ROADMAP.md) for what's next and [CLAUDE.md](CLAUDE.md) for conventions.

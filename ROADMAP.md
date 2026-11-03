@@ -1,39 +1,51 @@
 # Roadmap
 
-## P0–P3 — done (2026-11-04)
-- **P0 Skeleton** — CLI, config, rate-limited fetcher, immutable raw archive + manifest,
-  schema, registry, offline tests.
-- **P1 Core ingest** — EDGAR submissions (all pages), full filing archive incl. every
-  exhibit (resumable), XBRL companyfacts, Yahoo daily prices + splits/dividends with
-  Nasdaq cross-check.
-- **P2 Normalize** — statements (ranked concepts, restatements, derived Q4/CF quarters,
-  FCF), Forms 3/4/5 → people/roles/insider txns, 8-K items → event timeline, FTS5 index.
-- **P3 Dashboard v1** — Overview, Financials, Filings reader, Full-text search, People.
+## ✅ Done
 
-## P4 Depth — done (2026-11-04)
-- [x] **Ownership** — SC 13D/13G holders over time (XML + HTML + text cover pages), FINRA short interest.
-- [x] **Exec comp** — pay-versus-performance (`ecd:` XBRL) table on People.
-- [x] **News** — Google News RSS + GDELT headlines archived per update; coverage vs price.
-- [x] **10-K compare** — Item splitter + paragraph/word diff (Risk Factors, MD&A, …).
-- [x] **Journal** — notes + paper trades in `data/journal.db` (+ append-only `journal.log.jsonl`),
-      P&L, R-multiples, win rate.
-- [x] Partial-bar flag — an in-session fetch labels the last bar "intraday", never a close.
+### P0–P3 · foundation (2026-11-04)
+- CLI, rate-limited fetcher, immutable raw archive + manifest, versioned schema, offline tests.
+- EDGAR submissions (all pages), full filing archive incl. every exhibit (resumable), XBRL
+  companyfacts, Yahoo daily prices + splits/dividends with Nasdaq cross-check.
+- Statements (ranked concepts, restatements, derived Q4/CF quarters, FCF), Forms 3/4/5 →
+  people/roles/insider txns, 8-K items → event timeline, FTS5 over every filing.
+- Dashboard: Overview, Financials, Filings reader, Full-text search, People.
 
-## P4.5 Next small things
-- [x] Concept explorer — double-click a Financials cell → every raw XBRL fact behind it (
-      `/api/c/<T>/facts/<concept>`).
-- [ ] Proxy summary-comp table + director list parsed from DEF 14A HTML.
-- [ ] 13F institutional holders (SEC quarterly bulk sets) — bigger than 13G's >5% view.
+### P4 · depth (2026-11-04)
+- Ownership: 13D/13G across XML / HTML / text cover pages; FINRA short interest.
+- Pay versus performance (`ecd:` XBRL); News (Google News RSS + GDELT); 10-K compare;
+  Journal (`journal.db`, same-origin writes, P&L, R-multiples); intraday partial-bar flag.
+- Concept explorer — double-click any Financials cell to see every filing behind the number.
 
-## P5 Expansion (separate plan)
-- More tickers + watchlist + cross-company compare; screener over the local DB.
-- UK companies via Companies House API (free key) + LSE prices.
-- 13F institutional holders via SEC quarterly bulk datasets.
-- Nightly launchd update (logs in `~/Library/Logs/markets/` — TCC gotcha).
-- Macro context panel (FRED/BoE) — optional Ember hook.
+### P4.5 · proxy + institutions (2026-11-04)
+- **Proxy tables** — Summary Compensation Table + Director Compensation parsed from every
+  DEF 14A (TSLA: 17 proxies, 2011→); alignment is checked against each row's Total.
+- **13F institutions** — SEC quarterly data sets (8 most recent, shared under
+  `data/reference/`), joined by CUSIP (auto-detected from 13D/G cover pages); latest filing per
+  manager-quarter, de-duplicated; top holders, QoQ movers, calls vs puts, % of shares held.
 
-## Known gaps / honest limits
+### P5 · beyond one company (2026-11-04)
+- **Watchlist** home, **Compare peers** (total-return race + fundamentals), **Screener**.
+- **Lite tickers** (`--lite`): prices + financials + ownership/proxy filings, no full archive.
+  Auto-industry peers added: GM, F, RIVN, LCID.
+- **Macro** — FRED (10y, 2y, curve, Fed funds, CPI, unemployment, VIX, WTI, dollar, GBP/USD) +
+  Bank of England Bank Rate, with the current company overlaid on rates and VIX.
+- **UK listings** — `./markets add RR.L --ch <number>`: Yahoo LSE prices/dividends, news, and
+  Companies House profile / officers / PSCs / filing history (with `MARKETS_CH_KEY`).
+- **Nightly update** — `launchd/` plist + `scripts/nightly.sh install` (Tue–Sat 04:15 IST,
+  logs in `~/Library/Logs/markets/`). *Written, not installed — installing is Rajat's call.*
+
+## 🔜 Next
+- [ ] Get a free Companies House key → enable UK officers/PSCs/filings for RR.L.
+- [ ] UK financials: iXBRL accounts from Companies House filings (where filed electronically).
+- [ ] Alerts — new 8-K / insider buy / 13D on a watched ticker → macOS notification or phone.
+- [ ] Earnings view — results 8-K exhibit 99.1 side by side with the quarter's statements.
+- [ ] Sector peers from SIC codes automatically (currently hand-picked).
+- [ ] 13F history beyond 2 years (`--periods-13f 40`, ~3.5 GB) if it proves useful.
+
+## ⚠️ Known gaps / honest limits
 - No real-time ticks, no broker consensus estimates (not free).
-- Tesla's own custom XBRL tags (e.g. CF D&A after 2018) aren't in companyfacts; D&A falls
-  back to `Depreciation`.
-- Pre-2009 financials aren't XBRL-tagged.
+- Company-specific XBRL extensions aren't in companyfacts (Tesla CF D&A after 2018 falls back to
+  `Depreciation`). Pre-2009 financials aren't XBRL-tagged.
+- 13F data sets include late filers for old quarters; only quarters where ≥60 % of the peak
+  manager count has filed are shown.
+- Lite isn't tiny: ownership + proxy filings for an old company can be ~0.5 GB (proxy graphics).

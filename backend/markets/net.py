@@ -33,6 +33,9 @@ class Fetcher:
     def _profile(host: str) -> tuple[str, float]:
         if host.endswith("sec.gov"):
             return config.SEC_USER_AGENT, config.SEC_MIN_INTERVAL_S
+        if host.endswith("stlouisfed.org"):
+            # FRED tarpits full browser UA strings (observed 2026-11-04) but serves a bare one instantly
+            return "Mozilla/5.0", config.DEFAULT_MIN_INTERVAL_S
         return config.BROWSER_UA, config.DEFAULT_MIN_INTERVAL_S
 
     def _wait(self, host: str, interval: float) -> None:

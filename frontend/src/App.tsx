@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import type { Overview as OverviewT } from './api'
 import { useApi } from './hooks'
@@ -12,6 +12,10 @@ import Ownership from './pages/Ownership'
 import News from './pages/News'
 import Compare from './pages/Compare'
 import Journal from './pages/Journal'
+import Watchlist from './pages/Watchlist'
+import Peers from './pages/Peers'
+import Screener from './pages/Screener'
+import Macro from './pages/Macro'
 
 const NAV = [
   { to: 'overview', label: 'Overview', key: 'o', icon: '◉' },
@@ -24,6 +28,15 @@ const NAV = [
   { to: 'compare', label: '10-K compare', key: 'c', icon: '⇄' },
 ]
 const MINE = [{ to: 'journal', label: 'Journal', key: 'j', icon: '✎' }]
+// market-wide pages, not tied to one company
+const GLOBAL = [
+  { to: '/', label: 'Watchlist', key: 'h', icon: '☰' },
+  { to: '/peers', label: 'Compare peers', key: 'v', icon: '≍' },
+  { to: '/screener', label: 'Screener', key: 'x', icon: '⧩' },
+  { to: '/macro', label: 'Macro', key: 'm', icon: '∿' },
+]
+const LAST = 'markets:last-ticker'
+const lastTicker = () => { try { return localStorage.getItem(LAST) } catch { return null } }
 
 function Brand() {
   return (
@@ -41,7 +54,8 @@ function Palette({ ticker, onClose }: { ticker: string; onClose: () => void }) {
   const { data: companies } = useApi<{ ticker: string; name: string }[]>('companies')
   const opts = useMemo(() => {
     const base: { label: string; hint: string; go: () => void }[] = [
-      ...[...NAV, ...MINE].map((n) => ({ label: n.label, hint: 'g ' + n.key, go: () => nav(`/c/${ticker}/${n.to}`) })),
+      ...[...NAV, ...MINE].map((n) => ({ label: `${ticker} · ${n.label}`, hint: 'g ' + n.key, go: () => nav(`/c/${ticker}/${n.to}`) })),
+      ...GLOBAL.map((n) => ({ label: n.label, hint: 'g ' + n.key, go: () => nav(n.to) })),
       ...(companies ?? []).map((c) => ({ label: `${c.ticker} — ${c.name}`, hint: 'company', go: () => nav(`/c/${c.ticker}/overview`) })),
     ]
     if (q.trim()) base.push({ label: `Search filings for “${q.trim()}”`, hint: '↵', go: () => nav(`/c/${ticker}/search?q=${encodeURIComponent(q.trim())}`) })
@@ -74,6 +88,40 @@ function Palette({ ticker, onClose }: { ticker: string; onClose: () => void }) {
 function Company() {
   const { ticker = '' } = useParams()
   const t = ticker.toUpperCase()
+  useEffect(() => { try { localStorage.setItem(LAST, t) } catch { /* private mode */ } }, [t])
+  return (
+    <Shell t={t}>
+      {(ov) => (
+        <Routes>
+          <Route path="overview" element={<Overview t={t} ov={ov} />} />
+          <Route path="financials" element={<Financials t={t} />} />
+          <Route path="filings" element={<Filings t={t} />} />
+          <Route path="filings/:acc" element={<Filings t={t} />} />
+          <Route path="search" element={<Search t={t} />} />
+          <Route path="people" element={<People t={t} />} />
+          <Route path="ownership" element={<Ownership t={t} />} />
+          <Route path="news" element={<News t={t} />} />
+          <Route path="compare" element={<Compare t={t} />} />
+          <Route path="journal" element={<Journal t={t} />} />
+          <Route path="*" element={<Navigate to="overview" replace />} />
+        </Routes>
+      )}
+    </Shell>
+  )
+}
+
+function Global({ page }: { page: 'watchlist' | 'peers' | 'screener' | 'macro' }) {
+  const { data } = useApi<{ ticker: string }[]>('companies')
+  const t = (lastTicker() ?? data?.[0]?.ticker ?? '').toUpperCase()
+  if (!t) return data ? <div className="empty">No companies yet — run <code>./markets add TSLA &amp;&amp; ./markets update TSLA</code></div> : <div className="loading">loading</div>
+  return (
+    <Shell t={t} global>
+      {() => page === 'watchlist' ? <Watchlist /> : page === 'peers' ? <Peers /> : page === 'screener' ? <Screener /> : <Macro t={t} />}
+    </Shell>
+  )
+}
+
+function Shell({ t, global = false, children }: { t: string; global?: boolean; children: (ov: OverviewT | null) => React.ReactNode }) {
   const nav = useNavigate()
   const { data: ov, error } = useApi<OverviewT>(`c/${t}/overview`)
   const [palette, setPalette] = useState(false)
@@ -90,7 +138,9 @@ function Company() {
       if (e.key === 'g') { pendingG.current = Date.now(); return }
       if (Date.now() - pendingG.current < 900) {
         const n = [...NAV, ...MINE].find((x) => x.key === e.key)
+        const g = GLOBAL.find((x) => x.key === e.key)
         if (n) nav(`/c/${t}/${n.to}`)
+        else if (g) nav(g.to)
         pendingG.current = 0
       }
     }
@@ -125,15 +175,21 @@ function Company() {
         </div>
       </div>
       <nav className="sidenav">
-        <div className="sect">COMPANY</div>
+        <div className="sect">MARKET</div>
+        {GLOBAL.map((n) => (
+          <NavLink key={n.to} to={n.to} end className={({ isActive }) => (isActive ? 'active' : '')}>
+            <span style={{ width: 14, textAlign: 'center' }}>{n.icon}</span>{n.label}<span className="k">g {n.key}</span>
+          </NavLink>
+        ))}
+        <div className="sect">{t}{global ? <span className="dimmer" style={{ letterSpacing: 0, fontWeight: 400 }}> · last viewed</span> : null}</div>
         {NAV.map((n) => (
-          <NavLink key={n.to} to={`/c/${t}/${n.to}`} className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink key={n.to} to={`/c/${t}/${n.to}`} className={({ isActive }) => (isActive && !global ? 'active' : '')}>
             <span style={{ width: 14, textAlign: 'center' }}>{n.icon}</span>{n.label}<span className="k">g {n.key}</span>
           </NavLink>
         ))}
         <div className="sect">MINE</div>
         {MINE.map((n) => (
-          <NavLink key={n.to} to={`/c/${t}/${n.to}`} className={({ isActive }) => (isActive ? 'active' : '')}>
+          <NavLink key={n.to} to={`/c/${t}/${n.to}`} className={({ isActive }) => (isActive && !global ? 'active' : '')}>
             <span style={{ width: 14, textAlign: 'center' }}>{n.icon}</span>{n.label}<span className="k">g {n.key}</span>
           </NavLink>
         ))}
@@ -147,39 +203,20 @@ function Company() {
         </div>
       </nav>
       <main className="main">
-        {error ? <div className="err">{error}</div> : (
-          <Routes>
-            <Route path="overview" element={<Overview t={t} ov={ov} />} />
-            <Route path="financials" element={<Financials t={t} />} />
-            <Route path="filings" element={<Filings t={t} />} />
-            <Route path="filings/:acc" element={<Filings t={t} />} />
-            <Route path="search" element={<Search t={t} />} />
-            <Route path="people" element={<People t={t} />} />
-            <Route path="ownership" element={<Ownership t={t} />} />
-            <Route path="news" element={<News t={t} />} />
-            <Route path="compare" element={<Compare t={t} />} />
-            <Route path="journal" element={<Journal t={t} />} />
-            <Route path="*" element={<Navigate to="overview" replace />} />
-          </Routes>
-        )}
+        {error && !global ? <div className="err">{error}</div> : children(ov)}
       </main>
       {palette && <Palette ticker={t} onClose={() => setPalette(false)} />}
     </div>
   )
 }
 
-function Home() {
-  const { data, error } = useApi<{ ticker: string }[]>('companies')
-  if (error) return <div className="err">{error}</div>
-  if (!data) return <div className="loading">loading</div>
-  if (!data.length) return <div className="empty">No companies yet — run <code>./markets add TSLA &amp;&amp; ./markets update TSLA</code></div>
-  return <Navigate to={`/c/${data[0].ticker}/overview`} replace />
-}
-
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Home />} />
+      <Route path="/" element={<Global page="watchlist" />} />
+      <Route path="/peers" element={<Global page="peers" />} />
+      <Route path="/screener" element={<Global page="screener" />} />
+      <Route path="/macro" element={<Global page="macro" />} />
       <Route path="/c/:ticker/*" element={<Company />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

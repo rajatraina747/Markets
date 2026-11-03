@@ -40,17 +40,38 @@ def ticker_map(fetcher: Fetcher, refresh: bool = False) -> dict[str, dict]:
     return parse_ticker_map(json.loads(archive.read_raw(snap)))
 
 
-def add(ticker: str, fetcher: Fetcher) -> dict:
+NON_SEC_SUFFIX = {"L": ("GB", "LSE"), "IL": ("GB", "LSE IOB")}
+
+
+def add(ticker: str, fetcher: Fetcher, lite: bool | None = None, ch_number: str | None = None) -> dict:
     ticker = ticker.upper()
     reg = load()
+    if ticker in reg and ch_number and reg[ticker].get("ch_number") != ch_number:
+        reg[ticker]["ch_number"] = ch_number
+        save(reg)
     if ticker in reg:
+        if lite is not None and bool(reg[ticker].get("lite")) != lite:
+            reg[ticker]["lite"] = lite
+            save(reg)
         return reg[ticker]
+    if "." in ticker and ticker.rsplit(".", 1)[1] in NON_SEC_SUFFIX:
+        # Non-SEC listing (e.g. RR.L on the LSE): prices via Yahoo, filings via Companies House if a
+        # number is given. Name is filled from the quote on first update.
+        country, exchange = NON_SEC_SUFFIX[ticker.rsplit(".", 1)[1]]
+        rec = {"ticker": ticker, "cik": None, "name": None, "exchange": exchange, "country": country,
+               "ch_number": ch_number, "lite": True,
+               "added_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        reg[ticker] = rec
+        save(reg)
+        config.company_dir(ticker).mkdir(parents=True, exist_ok=True)
+        return rec
     tmap = ticker_map(fetcher)
     if ticker not in tmap:
         tmap = ticker_map(fetcher, refresh=True)
     if ticker not in tmap:
-        raise SystemExit(f"{ticker}: not found in SEC's ticker map (US SEC filers only for now)")
-    rec = dict(tmap[ticker], ticker=ticker,
+        raise SystemExit(f"{ticker}: not in SEC's ticker map. For London listings use the Yahoo form, e.g. RR.L "
+                         f"(optionally --ch <Companies House number>)")
+    rec = dict(tmap[ticker], ticker=ticker, lite=bool(lite),
                added_at=datetime.now(timezone.utc).isoformat(timespec="seconds"))
     reg[ticker] = rec
     save(reg)

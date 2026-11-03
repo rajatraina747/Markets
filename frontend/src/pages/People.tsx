@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Comp, Insider, InsiderTxn } from '../api'
+import type { Comp, Insider, InsiderTxn, ProxyComp } from '../api'
 import { useApi } from '../hooks'
 import { EChart, base, axis, C } from '../components/EChart'
 import { compact, date, money, price } from '../format'
@@ -68,6 +68,47 @@ function HoldingChart({ txns }: { txns: InsiderTxn[] }) {
   return option ? <EChart option={option} height={170} /> : null
 }
 
+function ProxyTables({ px }: { px: ProxyComp }) {
+  const years = [...new Set(px.sct.map((r) => r.fy))].sort((a, b) => b - a)
+  const [fy, setFy] = useState(years[0])
+  const dirYears = [...new Set(px.directors.map((r) => r.proxy_year))].sort((a, b) => b - a)
+  const [dy, setDy] = useState(dirYears[0])
+  const rows = px.sct.filter((r) => r.fy === fy)
+  const cols: [keyof typeof rows[0], string][] = [['salary', 'Salary'], ['bonus', 'Bonus'], ['stock', 'Stock awards'], ['option', 'Option awards'], ['non_equity', 'Non-equity'], ['other', 'All other'], ['total', 'Total']]
+  return (
+    <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1fr)' }}>
+      <section className="panel">
+        <header>Summary compensation table<span className="grow" />
+          <select className="input" style={{ textTransform: 'none' }} value={fy} onChange={(e) => setFy(+e.target.value)}>{years.map((y) => <option key={y} value={y}>FY{y}</option>)}</select>
+        </header>
+        <div style={{ overflow: 'auto' }}>
+          <table className="t">
+            <thead><tr><th>Executive</th>{cols.map(([k, l]) => <th key={k} className="n">{l}</th>)}</tr></thead>
+            <tbody>{rows.map((r) => (
+              <tr key={r.name}><td style={{ whiteSpace: 'normal' }}><div style={{ fontWeight: 550 }}>{r.name}</div><div className="dimmer" style={{ fontSize: 11 }}>{r.position}</div></td>
+                {cols.map(([k]) => <td key={k} className={'n' + (k === 'total' ? ' gold' : '')} style={k === 'total' ? { fontWeight: 600 } : undefined}>{r[k] ? money(r[k] as number) : <span className="dimmer">—</span>}</td>)}</tr>
+            ))}</tbody>
+          </table>
+        </div>
+        <div className="dimmer" style={{ padding: '8px 14px', fontSize: 11 }}>From the DEF 14A proxy (grant-date values — not what was realized). Parsed from HTML; every row's components were checked to sum to its total.</div>
+      </section>
+      {px.directors.length > 0 && (
+        <section className="panel">
+          <header>Director compensation<span className="grow" />
+            <select className="input" style={{ textTransform: 'none' }} value={dy} onChange={(e) => setDy(+e.target.value)}>{dirYears.map((y) => <option key={y} value={y}>FY{y}</option>)}</select>
+          </header>
+          <table className="t">
+            <thead><tr><th>Director</th><th className="n">Fees</th><th className="n">Awards</th><th className="n">Total</th></tr></thead>
+            <tbody>{px.directors.filter((r) => r.proxy_year === dy).map((r) => (
+              <tr key={r.name}><td>{r.name}</td><td className="n">{money(r.fees)}</td><td className="n">{money((r.stock ?? 0) + (r.option ?? 0))}</td><td className="n gold">{money(r.total)}</td></tr>
+            ))}</tbody>
+          </table>
+        </section>
+      )}
+    </div>
+  )
+}
+
 export default function People({ t }: { t: string }) {
   const nav = useNavigate()
   const { data: people, error } = useApi<Insider[]>(`c/${t}/insiders`)
@@ -81,6 +122,7 @@ export default function People({ t }: { t: string }) {
   }, [people, filter])
   const person = people?.find((p) => p.id === sel)
   const { data: comp } = useApi<Comp>(`c/${t}/comp`)
+  const { data: px } = useApi<ProxyComp>(`c/${t}/proxy`)
 
   if (error) return <div className="err">{error}</div>
   return (
@@ -111,6 +153,7 @@ export default function People({ t }: { t: string }) {
           </table>
         </section>
       )}
+      {px && px.sct.length > 0 && <ProxyTables px={px} />}
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.25fr)' }}>
         <section className="panel">
           <header>

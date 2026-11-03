@@ -4,7 +4,10 @@
 CREATE TABLE companies (
   id            INTEGER PRIMARY KEY,
   ticker        TEXT NOT NULL UNIQUE,
-  cik           INTEGER NOT NULL UNIQUE,
+  cik           INTEGER UNIQUE,    -- SEC filers; NULL for non-US (e.g. LSE) companies
+  country       TEXT DEFAULT 'US',
+  ch_number     TEXT,              -- UK Companies House number
+  currency      TEXT,
   name          TEXT NOT NULL,
   exchange      TEXT,
   sic           TEXT,
@@ -20,6 +23,7 @@ CREATE TABLE companies (
   former_names  TEXT,      -- JSON [{name, from, to}]
   tickers       TEXT,      -- JSON
   exchanges     TEXT,      -- JSON
+  cusip         TEXT,      -- from 13D/G cover pages; keys the 13F join
   updated_at    TEXT
 );
 
@@ -234,6 +238,58 @@ CREATE VIRTUAL TABLE filing_text USING fts5(
   body, company_id UNINDEXED, accession UNINDEXED, seq UNINDEXED,
   form UNINDEXED, filed UNINDEXED, doc_type UNINDEXED,
   tokenize = 'porter unicode61'
+);
+
+-- Proxy (DEF 14A) Summary Compensation Table: one row per exec per fiscal year (latest proxy wins)
+CREATE TABLE proxy_comp (
+  company_id    INTEGER NOT NULL,
+  fy            INTEGER NOT NULL,
+  name          TEXT NOT NULL,
+  position      TEXT,
+  salary REAL, bonus REAL, stock REAL, option REAL, non_equity REAL, pension REAL, other REAL, total REAL,
+  accession     TEXT,
+  PRIMARY KEY (company_id, fy, name)
+);
+
+CREATE TABLE director_comp (
+  company_id    INTEGER NOT NULL,
+  proxy_year    INTEGER NOT NULL,      -- fiscal year the proxy reports on
+  name          TEXT NOT NULL,
+  fees REAL, stock REAL, option REAL, other REAL, total REAL,
+  accession     TEXT,
+  PRIMARY KEY (company_id, proxy_year, name)
+);
+
+-- 13F institutional holdings (from SEC quarterly bulk data sets, joined by CUSIP)
+CREATE TABLE inst_holdings (
+  company_id    INTEGER NOT NULL,
+  period        TEXT NOT NULL,         -- quarter end
+  manager       TEXT NOT NULL,
+  manager_cik   TEXT,
+  shares        REAL,
+  value         REAL,                  -- USD
+  put_call      TEXT NOT NULL DEFAULT '',
+  filed         TEXT,
+  accession     TEXT
+);
+CREATE INDEX inst_period ON inst_holdings(company_id, period);
+
+-- Macro series (cross-company; company_id unused)
+CREATE TABLE macro (
+  series        TEXT NOT NULL,
+  date          TEXT NOT NULL,
+  value         REAL,
+  PRIMARY KEY (series, date)
+);
+
+-- UK Companies House
+CREATE TABLE ch_psc (
+  company_id    INTEGER NOT NULL,
+  name          TEXT,
+  kind          TEXT,
+  natures       TEXT,
+  notified      TEXT,
+  ceased        TEXT
 );
 
 CREATE TABLE build_log (

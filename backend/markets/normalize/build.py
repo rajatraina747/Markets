@@ -34,15 +34,43 @@ def _wipe(conn: sqlite3.Connection, cid: int, *tables: str) -> None:
 
 
 def upsert_company(conn: sqlite3.Connection, reg: dict, base: Path) -> int:
-    main, _ = edgar_submissions.load_latest(base, reg["cik"])
-    prof = edgar_submissions.parse_profile(main)
-    prof.update(ticker=reg["ticker"], exchange=reg.get("exchange"), updated_at=_now())
+    if reg.get("cik"):
+        main, _ = edgar_submissions.load_latest(base, reg["cik"])
+        prof = edgar_submissions.parse_profile(main)
+        prof.update(country="US")
+    else:
+        prof = _non_sec_profile(reg, base)
+    prof.update(ticker=reg["ticker"], exchange=reg.get("exchange"), ch_number=reg.get("ch_number"), updated_at=_now())
     cols = list(prof)
     conn.execute(
         f"INSERT INTO companies ({','.join(cols)}) VALUES ({','.join('?' * len(cols))}) "
         f"ON CONFLICT(ticker) DO UPDATE SET {','.join(f'{c}=excluded.{c}' for c in cols)}",
         [prof[c] for c in cols])
     return db.company_id(conn, reg["ticker"])
+
+
+def _non_sec_profile(reg: dict, base: Path) -> dict:
+    """UK & other non-SEC companies: Companies House profile if we have one, else Yahoo's quote meta."""
+    import json as _json
+    from ..sources import companies_house
+    prof = {"cik": None, "country": reg.get("country", "GB"), "name": reg.get("name") or reg["ticker"]}
+    ch = companies_house.load(base)
+    if ch.get("profile"):
+        p = companies_house.parse_profile(ch["profile"])
+        prof.update(name=p["name"] or prof["name"], sic=p["sic"], sic_desc=p["type"], category=p["status"],
+                    fiscal_year_end=p["fiscal_year_end"], state_of_inc=p["jurisdiction"],
+                    business_address=_json.dumps(p["address"]), former_names=_json.dumps(p["former_names"]))
+    snap = archive.latest_snapshot(base, prices.SOURCE_Y, "chart_1d.json")
+    if snap:
+        m = prices.parse_yahoo(archive.read_raw(snap))["meta"]
+        prof.setdefault("name", m["long_name"])
+        if prof["name"] == reg["ticker"] and m["long_name"]:
+            prof["name"] = m["long_name"]
+        prof["currency"] = m["currency"]
+    return prof
+
+
+SEC_ONLY = {"filings", "documents", "facts", "insiders", "ownership", "proxy", "13f", "fts", "short_interest"}
 
 
 @step("filings")
@@ -140,6 +168,8 @@ def rebuild(reg: dict, only: set[str] | None = None, conn: sqlite3.Connection | 
         cid = upsert_company(conn, reg, base)
     for name, fn in STEPS:
         if only and name not in only:
+            continue
+        if not reg.get("cik") and name in SEC_ONLY:
             continue
         t0 = time.monotonic()
         with conn:

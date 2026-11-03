@@ -188,6 +188,31 @@ def api_journal(q, t):
             "last": dict(last) if last else None}
 
 
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/proxy")
+def api_proxy(q, t):
+    return queries.proxy_comp(conn(), _cid(t))
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/institutions")
+def api_institutions(q, t):
+    return queries.institutions(conn(), _cid(t))
+
+
+@route(r"/api/watchlist")
+def api_watchlist(q):
+    return queries.watchlist(conn())
+
+
+@route(r"/api/compare")
+def api_compare(q):
+    return queries.compare_prices(conn(), [t for t in q.get("tickers", "").split(",") if t], q.get("since", "2021-01-01"))
+
+
+@route(r"/api/macro")
+def api_macro(q):
+    return queries.macro_series(conn(), q["keys"].split(",") if q.get("keys") else None, q.get("since", "1990-01-01"))
+
+
 # writes: /api/c/<T>/journal/<notes|trades>[/<id>]  (POST create/update, DELETE remove)
 WRITE_RX = re.compile(r"^/api/c/(?P<t>[A-Za-z.\-]+)/journal/(?P<kind>notes|trades)(?:/(?P<id>\d+))?$")
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import date, timedelta
 
+from .. import db
 from ..normalize import statements as stm
 
 FORM_GROUPS = {
@@ -334,8 +335,10 @@ def ownership(conn, cid) -> dict:
                    "avg_daily_vol": (r["avg_daily_vol"] or 0) * f, "days_to_cover": r["days_to_cover"]})
     sh = _latest(conn, cid, "shares_outstanding")
     shares_out = sh["value"] * split_factor(spl, sh["filed"] or sh["period_end"]) if sh else None
+    psc = [dict(r) for r in conn.execute("SELECT name, kind, natures, notified, ceased FROM ch_psc WHERE company_id=? "
+                                         "ORDER BY ceased IS NOT NULL, notified DESC", (cid,))]
     return {"holders": sorted(holders.values(), key=lambda h: h["latest_filed"], reverse=True),
-            "short_interest": si, "shares_outstanding": shares_out}
+            "short_interest": si, "shares_outstanding": shares_out, "psc": psc}
 
 
 def _holder_key(name: str | None) -> str:
@@ -429,3 +432,125 @@ def tenk_diff(conn, cid, a: str, b: str, item: str) -> dict:
         return out
     out.update(sections.diff(sa[item], sb[item]))
     return out
+
+
+# ------------------------------------------------------------------ P4.5 / P5
+
+def proxy_comp(conn, cid) -> dict:
+    sct = [dict(r) for r in conn.execute("SELECT * FROM proxy_comp WHERE company_id=? ORDER BY fy DESC, total DESC", (cid,))]
+    dirs = [dict(r) for r in conn.execute("SELECT * FROM director_comp WHERE company_id=? ORDER BY proxy_year DESC, total DESC",
+                                          (cid,))]
+    return {"sct": sct, "directors": dirs}
+
+
+def institutions(conn, cid) -> dict:
+    """13F view. Only quarters where most managers have filed (data sets trail by up to a year
+    for late filers, so older quarters are sparse) count as complete."""
+    per = [dict(r) for r in conn.execute(
+        "SELECT period, COUNT(*) AS managers, SUM(shares) AS shares, SUM(value) AS value FROM inst_holdings "
+        "WHERE company_id=? AND put_call='' GROUP BY period ORDER BY period", (cid,))]
+    if not per:
+        return {"quarters": [], "top": [], "movers": [], "options": [], "shares_outstanding": None}
+    peak = max(p["managers"] for p in per)
+    quarters = [p for p in per if p["managers"] >= peak * 0.6]
+    spl = splits(conn, cid)
+    sh = _latest(conn, cid, "shares_outstanding")
+    shares_out = sh["value"] * split_factor(spl, sh["filed"] or sh["period_end"]) if sh else None
+    for q in quarters:
+        q["pct_of_shares"] = q["shares"] / shares_out if shares_out else None
+    if not quarters:
+        return {"quarters": [], "top": [], "movers": [], "options": [], "shares_outstanding": shares_out}
+    last = quarters[-1]["period"]
+    prev = quarters[-2]["period"] if len(quarters) > 1 else None
+
+    def book(period):
+        return {r["manager_cik"]: dict(r) for r in conn.execute(
+            "SELECT manager, manager_cik, shares, value FROM inst_holdings WHERE company_id=? AND period=? AND put_call=''",
+            (cid, period))}
+    cur, old = book(last), (book(prev) if prev else {})
+    top = sorted(cur.values(), key=lambda r: -r["shares"])[:40]
+    for r in top:
+        o = old.get(r["manager_cik"])
+        r["change"] = r["shares"] - o["shares"] if o else None
+        r["pct_of_shares"] = r["shares"] / shares_out if shares_out else None
+    movers = []
+    for k in set(cur) | set(old):
+        c, o = cur.get(k), old.get(k)
+        delta = (c["shares"] if c else 0) - (o["shares"] if o else 0)
+        movers.append({"manager": (c or o)["manager"], "delta": delta, "now": c["shares"] if c else 0,
+                       "status": "new" if not o else "exited" if not c else "changed"})
+    movers.sort(key=lambda m: -abs(m["delta"]))
+    options = [dict(r) for r in conn.execute(
+        "SELECT period, put_call, COUNT(*) AS managers, SUM(shares) AS shares, SUM(value) AS value FROM inst_holdings "
+        "WHERE company_id=? AND put_call!='' GROUP BY period, put_call ORDER BY period", (cid,))
+        if r["period"] in {q["period"] for q in quarters}]
+    return {"quarters": quarters, "last": last, "prev": prev, "top": top, "movers": movers[:30],
+            "options": options, "shares_outstanding": shares_out}
+
+
+def macro_series(conn, keys: list[str] | None = None, since: str = "1990-01-01") -> dict:
+    from ..sources.macro import SERIES
+    out = {}
+    for key, (_prov, _sid, label, unit, group) in SERIES.items():
+        if keys and key not in keys:
+            continue
+        pts = [[r[0], r[1]] for r in conn.execute("SELECT date, value FROM macro WHERE series=? AND date>=? ORDER BY date",
+                                                  (key, since))]
+        if pts:
+            out[key] = {"label": label, "unit": unit, "group": group, "points": pts}
+    return out
+
+
+def watchlist(conn) -> list[dict]:
+    """One summary row per tracked company (watchlist, screener, compare picker)."""
+    out = []
+    for c in conn.execute("SELECT id, ticker FROM companies ORDER BY ticker").fetchall():
+        try:
+            ov = overview(conn, c["id"])
+        except Exception:  # half-built company — skip rather than break the list
+            continue
+        closes = [r[0] for r in conn.execute(
+            "SELECT close FROM (SELECT date, close FROM prices_daily WHERE company_id=? ORDER BY date DESC LIMIT 120) "
+            "ORDER BY date", (c["id"],))]
+        out.append({
+            "ticker": c["ticker"], "name": ov["company"]["name"], "sic_desc": ov["company"]["sic_desc"],
+            "exchange": ov["company"]["exchange"], "price": ov["price"], "change": ov["change"],
+            "partial": bool(ov["quote"] and ov["quote"].get("partial")),
+            "market_cap": ov["market_cap"], "enterprise_value": ov["enterprise_value"],
+            "returns": ov["returns"], "valuation": ov["valuation"], "margins": ov["margins"],
+            "ttm": ov["ttm"], "balance": ov["balance"], "high_52w": ov["high_52w"], "low_52w": ov["low_52w"],
+            "spark": closes, "archived_filings": ov["counts"]["filings_archived"], "filings": ov["counts"]["filings"],
+            "revenue_growth": _yoy(conn, c["id"], "revenue"),
+        })
+    return out
+
+
+def _yoy(conn, cid, line):
+    """TTM vs prior-TTM growth from quarterly lines."""
+    rows = [r[0] for r in conn.execute("SELECT value FROM statement_lines WHERE company_id=? AND line=? AND "
+                                       "period_type='quarterly' ORDER BY period_end DESC LIMIT 8", (cid, line))]
+    if len(rows) < 8 or not sum(rows[4:]):
+        return None
+    return sum(rows[:4]) / sum(rows[4:]) - 1
+
+
+def compare_prices(conn, tickers: list[str], since: str) -> dict:
+    """Closes rebased to 100 at the first common date on/after `since`."""
+    series = {}
+    for t in tickers:
+        cid = db.company_id(conn, t)
+        if cid is None:
+            continue
+        series[t.upper()] = [(r[0], r[1]) for r in conn.execute(
+            "SELECT date, adj_close FROM prices_daily WHERE company_id=? AND date>=? AND adj_close IS NOT NULL "
+            "ORDER BY date", (cid, since))]
+    if not series:
+        return {"series": {}}
+    start = max(pts[0][0] for pts in series.values() if pts)
+    out = {}
+    for t, pts in series.items():
+        pts = [p for p in pts if p[0] >= start]
+        if pts:
+            b = pts[0][1]
+            out[t] = [[d, round(v / b * 100, 3)] for d, v in pts]
+    return {"start": start, "series": out}

@@ -7,6 +7,7 @@ GDELT asks for at most one request per 5 s.
 from __future__ import annotations
 
 import json
+import re
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -24,7 +25,12 @@ SOURCE = "news"
 
 
 def queries(ticker: str, name: str) -> dict[str, str]:
-    short = name.replace(", Inc.", "").replace(" Inc.", "").replace(" Corporation", "").replace(",", "").strip()
+    short = re.sub(r"\s*/\s*[A-Z]{2}\s*$", "", name)                       # "Rivian Automotive, Inc. / DE"
+    short = re.sub(r"[,.]?\s+(inc|corp|corporation|co|company|group|holdings|ltd|plc|n\.?v|s\.?a)\.?$", "",
+                   short.strip(), flags=re.I)
+    short = re.sub(r"[,.]?\s+(inc|corp|co)\.?$", "", short.strip(), flags=re.I).strip(" ,")
+    if short.isupper():
+        short = short.title()                                                   # "FORD MOTOR CO" → "Ford Motor"
     return {"gnews": f'"{short}" OR {ticker} stock when:7d',
             "gdelt": f'"{short}" sourcelang:english'}
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from . import config
@@ -34,12 +35,21 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def connect() -> sqlite3.Connection:
+@contextmanager
+def connect():
+    """Commit on success, roll back on error, ALWAYS close (sqlite3's own `with` doesn't close)."""
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(config.JOURNAL_DB_PATH)
     c.row_factory = sqlite3.Row
-    c.executescript(SCHEMA)
-    return c
+    try:
+        c.executescript(SCHEMA)
+        yield c
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
 
 
 def _log(action: str, kind: str, payload: dict) -> None:
