@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import type { Insider, InsiderTxn } from '../api'
+import type { Comp, Insider, InsiderTxn } from '../api'
 import { useApi } from '../hooks'
 import { EChart, base, axis, C } from '../components/EChart'
 import { compact, date, money, price } from '../format'
@@ -80,6 +80,7 @@ export default function People({ t }: { t: string }) {
     return (people ?? []).filter((p) => filter === 'all' || (filter === 'officer' && p.is_officer) || (filter === 'director' && p.is_director) || (filter === 'current' && p.last_seen >= yearAgo))
   }, [people, filter])
   const person = people?.find((p) => p.id === sel)
+  const { data: comp } = useApi<Comp>(`c/${t}/comp`)
 
   if (error) return <div className="err">{error}</div>
   return (
@@ -89,6 +90,27 @@ export default function People({ t }: { t: string }) {
         <header>Insider open-market activity (all insiders, monthly $)</header>
         <div className="body">{market ? <ActivityChart txns={market} /> : <div className="loading">loading</div>}</div>
       </section>
+      {comp && comp.years.length > 0 && (
+        <section className="panel">
+          <header>Pay versus performance<span className="grow" /><span className="dimmer" style={{ textTransform: 'none', letterSpacing: 0 }}>proxy-statement XBRL (Item 402(v)) · “actually paid” marks equity awards to market</span></header>
+          <table className="t">
+            <thead><tr><th>Measure</th>{comp.years.map((y) => <th key={y} className="n">FY{y}</th>)}</tr></thead>
+            <tbody>
+              {comp.lines.map((l) => (
+                <tr key={l.concept}>
+                  <td>{l.label}</td>
+                  {comp.years.map((y) => {
+                    const v = l.values[String(y)]
+                    const isTsr = l.concept.includes('ShareholderRtn')
+                    return <td key={y} className={'n' + (v < 0 ? ' down' : '')}>{v === undefined ? <span className="dimmer">·</span> : isTsr ? '$' + v.toFixed(0) : money(v)}</td>
+                  })}
+                </tr>
+              ))}
+              <tr><td className="dimmer">Net income (10-K)</td>{comp.years.map((y) => <td key={y} className="n dim">{money(comp.net_income[String(y)])}</td>)}</tr>
+            </tbody>
+          </table>
+        </section>
+      )}
       <div className="grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.25fr)' }}>
         <section className="panel">
           <header>

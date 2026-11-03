@@ -7,7 +7,7 @@ import sys
 from . import config, db, registry
 from .net import Fetcher
 
-SOURCES = ["submissions", "xbrl", "prices", "filings"]
+SOURCES = ["submissions", "xbrl", "prices", "shorts", "news", "filings"]
 
 
 def cmd_add(a) -> int:
@@ -44,6 +44,20 @@ def cmd_update(a) -> int:
             print(f"  yahoo vs nasdaq: {rec['shared']} shared closes, {flag}", file=sys.stderr)
         except Exception as e:  # cross-check is advisory, never fatal
             print(f"  nasdaq cross-check skipped: {e}", file=sys.stderr)
+    if "shorts" in only:
+        from .sources import short_interest
+        print("short interest (FINRA)…", file=sys.stderr)
+        try:
+            short_interest.fetch(base, reg["ticker"], f)
+        except Exception as e:
+            print(f"  short interest skipped: {e}", file=sys.stderr)
+    if "news" in only:
+        from .sources import news
+        print("news (Google News RSS + GDELT)…", file=sys.stderr)
+        try:
+            news.fetch(base, reg["ticker"], reg["name"], f)
+        except Exception as e:
+            print(f"  news skipped: {e}", file=sys.stderr)
     if "filings" in only:
         main, pages = edgar_submissions.load_latest(base, reg["cik"])
         rows = edgar_submissions.parse_filings(main, pages)

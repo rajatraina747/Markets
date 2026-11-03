@@ -82,8 +82,14 @@ def parse_yahoo(raw: bytes) -> dict:
               for s in (ev.get("splits") or {}).values()]
     divs = [{"date": _d(d["date"], off), "amount": float(d["amount"])}
             for d in (ev.get("dividends") or {}).values()]
+    # In-session fetch: the newest bar is a live snapshot, not a close (Ember lesson, 2026-07-09).
+    reg = ((meta.get("currentTradingPeriod") or {}).get("regular") or {})
+    mtime = int(meta.get("regularMarketTime") or 0)
+    partial = bool(reg.get("start") and reg.get("end") and reg["start"] <= mtime < reg["end"]
+                   and bars and bars[-1]["date"] == _d(reg["start"], off))
     return {
         "meta": {
+            "partial": partial,
             "as_of": datetime.fromtimestamp(meta.get("regularMarketTime", 0), tz=timezone.utc)
                      .isoformat(timespec="seconds"),
             "price": meta.get("regularMarketPrice"),

@@ -6,8 +6,9 @@ trades via deep public data on one company at a time. TSLA first; built multi-co
 ## Hard rules
 - **Free data only.** No paid feeds, keys-with-billing, or hosting. Official APIs and bulk
   files only; don't scrape sites that forbid it.
-- **Raw archive is immutable** (`data/companies/<T>/raw/`). New fetches add dated snapshots;
-  never edit or delete raw files. Everything in `markets.db` must be rebuildable from raw
+- **Raw archive is immutable** (`data/companies/<T>/raw/`). Filings are write-once by accession;
+  changing sources (prices, facts, news…) get one dated snapshot per day (a same-day refetch
+  replaces that day's file; manifest.jsonl keeps every fetch's hash). Never edit or delete raw files. Everything in `markets.db` must be rebuildable from raw
   (`./markets rebuild`) with no network. If you add a source: fetch → archive → pure parse →
   build step.
 - **User-authored data** (notes, paper trades — P4) goes in `data/journal.db`, never in
@@ -26,5 +27,8 @@ trades via deep public data on one company at a time. TSLA first; built multi-co
   close, not yesterday's. Stooq is behind an anti-bot wall.
 - XBRL `fy` is the filing's year, not the fact's — use `statements.fiscal_label`.
 - Per-share/share-count values are as-reported; API split-adjusts using the value's filing date.
+- A fetch during US market hours makes the last bar a live snapshot — `quote_meta.partial`; never
+  present it as a close.
+- Journal writes: same-origin + JSON content-type only (server binds 127.0.0.1).
 
 See ROADMAP.md for phases and what's next.

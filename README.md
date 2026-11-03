@@ -33,6 +33,11 @@ Dev mode with hot reload: `./markets serve` + `cd frontend && npm run dev` → :
 | Insiders: people, roles, every Form 3/4/5 txn | Form 3/4/5 XML | split-adjusted shares & prices |
 | Event timeline | 8-K items, filings, splits, insider trades | drives chart markers |
 | Full-text search over all filings | SQLite FTS5 | phrases, prefix*, AND/OR |
+| >5% holders (13D/13G) | archived Schedule 13D/G filings | XML (2024+), HTML and text cover pages |
+| Short interest | FINRA consolidated short interest API | bi-monthly, split-adjusted |
+| Pay vs performance | proxy-statement `ecd:` XBRL | CEO / NEO comp, TSR |
+| News headlines | Google News RSS + GDELT | accumulates with every update |
+| **Your journal** | you | `data/journal.db` — notes + paper trades; back this up |
 
 ## Dashboard
 
@@ -44,9 +49,14 @@ Dev mode with hot reload: `./markets serve` + `cd frontend && npm run dev` → :
 - **Filings** — filter the whole archive by group/year/text; read any document or
   exhibit locally (sandboxed), original or extracted text.
 - **Search** — full-text across everything, hits by year, highlighted reader.
-- **People** — every insider, roles, tenure, holdings over time, every transaction.
+- **People** — every insider, roles, tenure, holdings over time, every transaction; pay vs performance.
+- **Ownership** — >5% holders over time, short interest vs price.
+- **News** — archived headlines, coverage vs price, filter by source.
+- **10-K compare** — pick two years and an Item (Risk Factors, MD&A, …): what was added, removed, reworded.
+- **Journal** — paper trades with thesis/stop/target, P&L and R; notes per company.
 
-Keys: `/` or `⌘K` palette · `g o` overview · `g f` financials · `g l` filings · `g s` search · `g p` people.
+Keys: `/` or `⌘K` palette · `g o` overview · `g f` financials · `g l` filings · `g s` search ·
+`g p` people · `g w` ownership · `g n` news · `g c` 10-K compare · `g j` journal.
 
 ## Layout
 
@@ -66,6 +76,7 @@ data/                   (gitignored)
   companies/TSLA/raw/   the archive — source of truth, never edited
   companies/TSLA/manifest.jsonl   every fetch: url, time, sha256, bytes
   markets.db            derived — `./markets rebuild` recreates it with zero network
+  journal.db            YOURS — notes & paper trades (not rebuildable; back it up)
 ```
 
 ## Tests

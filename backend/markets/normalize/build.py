@@ -119,10 +119,10 @@ def build_prices(conn, cid, reg, base) -> int:
     m["prev_close"] = bars[-2]["close"] if len(bars) >= 2 else None
     if m["as_of"] and m["as_of"][:10] > bars[-1]["date"]:
         m["prev_close"] = bars[-1]["close"]
-    conn.execute("INSERT INTO quote_meta VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+    conn.execute("INSERT INTO quote_meta VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                  (cid, m["as_of"], m["price"], m["prev_close"], m["day_high"], m["day_low"],
                   m["volume"], m["high_52w"], m["low_52w"], m["currency"], m["exchange"],
-                  m["long_name"]))
+                  m["long_name"], int(m.get("partial", False))))
     return len(p["bars"])
 
 

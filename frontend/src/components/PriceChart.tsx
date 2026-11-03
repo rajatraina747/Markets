@@ -14,6 +14,7 @@ export const EVENT_KINDS: Record<string, { label: string; color: string; shape: 
   insider: { label: 'Insider', color: '#3cc8d8', shape: 'arrowUp', pos: 'belowBar' },
   split: { label: 'Split', color: '#ff9d4d', shape: 'square', pos: 'aboveBar' },
   dividend: { label: 'Dividend', color: '#2fbf71', shape: 'circle', pos: 'belowBar' },
+  holder: { label: '13D/G', color: '#e879a8', shape: 'square', pos: 'belowBar' },
 }
 
 const RANGES: [string, number | null][] = [['1M', 30], ['3M', 91], ['6M', 182], ['YTD', -1], ['1Y', 365], ['3Y', 1095], ['5Y', 1826], ['MAX', null]]

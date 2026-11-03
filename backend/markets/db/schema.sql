@@ -131,7 +131,8 @@ CREATE TABLE quote_meta (
   high_52w REAL, low_52w REAL,
   currency      TEXT,
   exchange      TEXT,
-  long_name     TEXT
+  long_name     TEXT,
+  partial       INTEGER DEFAULT 0  -- 1 = newest bar is an in-session snapshot, not a close
 );
 
 CREATE TABLE people (

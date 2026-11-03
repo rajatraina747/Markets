@@ -17,7 +17,7 @@ export interface EventRow {
 
 export interface Overview {
   company: Company
-  quote: { as_of: string; currency: string; exchange: string; long_name: string } | null
+  quote: { as_of: string; currency: string; exchange: string; long_name: string; partial: number } | null
   price: Num; prev_close: Num; change: Num; last_bar: string | null
   shares_outstanding: Num; market_cap: Num; enterprise_value: Num
   high_52w: Num; low_52w: Num
@@ -91,3 +91,48 @@ export async function get<T>(path: string, opts: { fresh?: boolean } = {}): Prom
 
 export const fileUrl = (t: string, acc: string, filename: string) =>
   `/api/c/${t}/files/${acc}/${encodeURIComponent(filename)}`
+
+// ---------------------------------------------------------------- P4
+
+export interface HolderFiling { filed: string; form: string; event_date: string | null; shares: Num; shares_adj: Num; percent: Num; accession: string }
+export interface Holder { name: string; filings: HolderFiling[]; latest_percent: Num; latest_shares_adj: Num; latest_filed: string; is_13d: boolean }
+export interface Ownership {
+  holders: Holder[]
+  short_interest: { date: string; shares_short: number; avg_daily_vol: number; days_to_cover: Num }[]
+  shares_outstanding: Num
+}
+
+export interface NewsItem { url: string; published: string | null; source: string | null; title: string; feed: string }
+export interface NewsPage { rows: NewsItem[]; per_day: { day: string; n: number }[]; sources: { source: string; n: number }[]; total: number; first: string | null; last: string | null }
+
+export interface Comp { years: number[]; lines: { concept: string; label: string; values: Record<string, number> }[]; net_income: Record<string, number> }
+
+export interface TenK { accession: string; form: string; filed: string; report_date: string | null; has_text: number }
+export type DiffBlock =
+  | { op: 'equal'; n: number; first: string }
+  | { op: 'add' | 'remove'; text: string }
+  | { op: 'change'; words: ['=' | '+' | '-', string][] }
+export interface Diff {
+  item: string; label: string | null; a: string; b: string; error?: string
+  items_a: Record<string, number>; items_b: Record<string, number>; item_labels: Record<string, string>
+  stats?: { added: number; removed: number; changed: number; unchanged: number; similarity: number; words_a: number; words_b: number }
+  blocks?: DiffBlock[]
+}
+
+export interface Note { id: number; ticker: string; title: string | null; body: string; tags: string | null; pinned: number; created: string; updated: string }
+export interface Trade {
+  id: number; ticker: string; side: 'long' | 'short'; qty: number; entry_date: string; entry_price: number
+  stop: Num; target: Num; thesis: string | null; exit_date: string | null; exit_price: Num; exit_reason: string | null
+  mark: Num; pnl: Num; pnl_pct: Num; r?: Num; open: boolean; entry_close: Num
+}
+export interface Journal { notes: Note[]; trades: Trade[]; last: { date: string; close: number } | null }
+
+export async function send<T>(method: 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
+  const r = await fetch('/api/' + path, {
+    method, headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  const j = await r.json()
+  if (!r.ok) throw new Error(j?.error || r.statusText)
+  return j as T
+}

@@ -1,6 +1,6 @@
 # Roadmap
 
-## Done (2026-11-04)
+## P0–P3 — done (2026-11-04)
 - **P0 Skeleton** — CLI, config, rate-limited fetcher, immutable raw archive + manifest,
   schema, registry, offline tests.
 - **P1 Core ingest** — EDGAR submissions (all pages), full filing archive incl. every
@@ -10,16 +10,20 @@
   FCF), Forms 3/4/5 → people/roles/insider txns, 8-K items → event timeline, FTS5 index.
 - **P3 Dashboard v1** — Overview, Financials, Filings reader, Full-text search, People.
 
-## P4 Depth (next)
-- [ ] **Ownership** — SC 13D/13G holders over time (parse cover pages), insider net buying,
-      FINRA short interest (bi-monthly files).
-- [ ] **Exec comp** — `ecd:` pay-vs-performance XBRL already in facts; proxy (DEF 14A)
-      summary comp table + director list parsing.
-- [ ] **News** — GDELT doc API + Google News RSS, archived daily; volume vs price overlay.
-- [ ] **10-K diffs** — section splitter (Item 1A Risk Factors, Item 7 MD&A), YoY diff view.
-- [ ] **Journal** — notes + paper trades in `data/journal.db`, P&L vs stored prices.
-- [ ] Concept explorer — click any cell → every raw XBRL fact behind it (`/api/.../facts/<concept>`
-      exists already).
+## P4 Depth — done (2026-11-04)
+- [x] **Ownership** — SC 13D/13G holders over time (XML + HTML + text cover pages), FINRA short interest.
+- [x] **Exec comp** — pay-versus-performance (`ecd:` XBRL) table on People.
+- [x] **News** — Google News RSS + GDELT headlines archived per update; coverage vs price.
+- [x] **10-K compare** — Item splitter + paragraph/word diff (Risk Factors, MD&A, …).
+- [x] **Journal** — notes + paper trades in `data/journal.db` (+ append-only `journal.log.jsonl`),
+      P&L, R-multiples, win rate.
+- [x] Partial-bar flag — an in-session fetch labels the last bar "intraday", never a close.
+
+## P4.5 Next small things
+- [ ] Concept explorer — click a Financials cell → every raw XBRL fact behind it (API exists:
+      `/api/c/<T>/facts/<concept>`).
+- [ ] Proxy summary-comp table + director list parsed from DEF 14A HTML.
+- [ ] 13F institutional holders (SEC quarterly bulk sets) — bigger than 13G's >5% view.
 
 ## P5 Expansion (separate plan)
 - More tickers + watchlist + cross-company compare; screener over the local DB.

@@ -308,3 +308,124 @@ def insider_txns(conn, cid, q: dict) -> list[dict]:
         d["shares_after_adj"] = d["shares_after"] * f if d["shares_after"] is not None else None
         out.append(d)
     return out
+
+
+# ------------------------------------------------------------------ P4
+
+def ownership(conn, cid) -> dict:
+    spl = splits(conn, cid)
+    holders: dict[str, dict] = {}
+    for r in conn.execute("SELECT * FROM holders_13dg WHERE company_id=? ORDER BY filed", (cid,)):
+        key = _holder_key(r["filer_name"])
+        h = holders.setdefault(key, {"name": r["filer_name"], "filings": []})
+        h["name"] = r["filer_name"]
+        f = split_factor(spl, r["event_date"] or r["filed"])
+        h["filings"].append({"filed": r["filed"], "form": r["form"], "event_date": r["event_date"],
+                             "shares": r["shares"], "shares_adj": r["shares"] * f if r["shares"] is not None else None,
+                             "percent": r["percent"], "accession": r["accession"]})
+    for h in holders.values():
+        last = h["filings"][-1]
+        h.update(latest_percent=last["percent"], latest_shares_adj=last["shares_adj"], latest_filed=last["filed"],
+                 is_13d=any("13D" in (f["form"] or "") for f in h["filings"]))
+    si = []
+    for r in conn.execute("SELECT * FROM short_interest WHERE company_id=? ORDER BY settle_date", (cid,)):
+        f = split_factor(spl, r["settle_date"])
+        si.append({"date": r["settle_date"], "shares_short": (r["shares_short"] or 0) * f,
+                   "avg_daily_vol": (r["avg_daily_vol"] or 0) * f, "days_to_cover": r["days_to_cover"]})
+    sh = _latest(conn, cid, "shares_outstanding")
+    shares_out = sh["value"] * split_factor(spl, sh["filed"] or sh["period_end"]) if sh else None
+    return {"holders": sorted(holders.values(), key=lambda h: h["latest_filed"], reverse=True),
+            "short_interest": si, "shares_outstanding": shares_out}
+
+
+def _holder_key(name: str | None) -> str:
+    import re as _re
+    n = (name or "?").lower()
+    n = _re.sub(r"[^a-z ]", " ", n)
+    n = _re.sub(r"\b(inc|the|group|corp|corporation|llc|ltd|co|r)\b", " ", n)
+    return " ".join(n.split())[:40]
+
+
+def news(conn, cid, q: dict) -> dict:
+    where, args = ["company_id=?"], [cid]
+    if q.get("q"):
+        where.append("title LIKE ?")
+        args.append(f"%{q['q']}%")
+    if q.get("source"):
+        where.append("source=?")
+        args.append(q["source"])
+    w = " AND ".join(where)
+    rows = [dict(r) for r in conn.execute(
+        f"SELECT url, published, source, title, feed FROM news WHERE {w} ORDER BY published DESC LIMIT ?",
+        args + [min(int(q.get("limit", 300)), 2000)])]
+    per_day = [dict(r) for r in conn.execute(
+        f"SELECT substr(published,1,10) AS day, COUNT(*) AS n FROM news WHERE {w} AND published IS NOT NULL "
+        f"GROUP BY 1 ORDER BY 1", args)]
+    sources = [dict(r) for r in conn.execute(
+        "SELECT source, COUNT(*) AS n FROM news WHERE company_id=? GROUP BY 1 ORDER BY 2 DESC LIMIT 25", (cid,))]
+    total = conn.execute("SELECT COUNT(*) FROM news WHERE company_id=?", (cid,)).fetchone()[0]
+    span = conn.execute("SELECT MIN(published), MAX(published) FROM news WHERE company_id=?", (cid,)).fetchone()
+    return {"rows": rows, "per_day": per_day, "sources": sources, "total": total,
+            "first": span[0], "last": span[1]}
+
+
+ECD_LABELS = {
+    "PeoTotalCompAmt": "CEO total comp (summary table)",
+    "PeoActuallyPaidCompAmt": "CEO compensation actually paid",
+    "NonPeoNeoAvgTotalCompAmt": "Other NEOs avg total comp",
+    "NonPeoNeoAvgCompActuallyPaidAmt": "Other NEOs avg comp actually paid",
+    "TotalShareholderRtnAmt": "TSR (value of $100)",
+    "PeerGroupTotalShareholderRtnAmt": "Peer TSR (value of $100)",
+    "CoSelectedMeasureAmt": "Company-selected measure",
+}
+
+
+def exec_comp(conn, cid) -> dict:
+    rows = conn.execute("SELECT fy, concept, value, accession FROM exec_comp WHERE company_id=? ORDER BY fy",
+                        (cid,)).fetchall()
+    years = sorted({r["fy"] for r in rows}, reverse=True)
+    table: dict[str, dict] = {}
+    for r in rows:
+        table.setdefault(r["concept"], {})[str(r["fy"])] = r["value"]
+    lines = [{"concept": c, "label": ECD_LABELS.get(c, c), "values": table[c]}
+             for c in ECD_LABELS if c in table] + \
+            [{"concept": c, "label": c, "values": v} for c, v in table.items() if c not in ECD_LABELS]
+    ni = {str(r["fy"]): r["value"] for r in conn.execute(
+        "SELECT fy, value FROM statement_lines WHERE company_id=? AND line='net_income' AND period_type='annual'", (cid,))}
+    return {"years": years, "lines": lines, "net_income": ni}
+
+
+def tenk_list(conn, cid) -> list[dict]:
+    return [dict(r) for r in conn.execute(
+        "SELECT f.accession, f.form, f.filed, f.report_date, "
+        "EXISTS(SELECT 1 FROM filing_text t WHERE t.company_id=f.company_id AND t.accession=f.accession) AS has_text "
+        "FROM filings f WHERE f.company_id=? AND f.form IN ('10-K','10-KT') ORDER BY f.filed DESC", (cid,))]
+
+
+_SECTION_CACHE: dict[tuple, dict] = {}
+
+
+def _sections(conn, cid, acc: str) -> dict[str, str]:
+    from ..normalize import sections
+    key = (cid, acc)
+    if key not in _SECTION_CACHE:
+        r = conn.execute("SELECT body FROM filing_text WHERE company_id=? AND accession=? ORDER BY length(body) DESC "
+                         "LIMIT 1", (cid, acc)).fetchone()
+        _SECTION_CACHE[key] = sections.split_items(r["body"]) if r else {}
+        if len(_SECTION_CACHE) > 40:
+            _SECTION_CACHE.pop(next(iter(_SECTION_CACHE)))
+    return _SECTION_CACHE[key]
+
+
+def tenk_diff(conn, cid, a: str, b: str, item: str) -> dict:
+    from ..normalize import sections
+    sa, sb = _sections(conn, cid, a), _sections(conn, cid, b)
+    item = item.upper()
+    out = {"item": item, "label": sections.ITEMS.get(item), "a": a, "b": b,
+           "items_a": {k: len(v) for k, v in sa.items()}, "items_b": {k: len(v) for k, v in sb.items()},
+           "item_labels": sections.ITEMS}
+    if item not in sa or item not in sb:
+        out["error"] = f"Item {item} not found in {'both filings' if item not in sa and item not in sb else 'one filing'}"
+        return out
+    out.update(sections.diff(sa[item], sb[item]))
+    return out

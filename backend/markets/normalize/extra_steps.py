@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 from .. import archive
 from ..sources import edgar_filings, form4
-from . import statements, text
+from . import p4_steps, statements, text
 from .build import _wipe, register_step
 
 INSIDER_FORMS = {"3", "4", "5", "3/A", "4/A", "5/A"}
@@ -147,6 +147,13 @@ def build_events(conn, cid, reg, base) -> int:
         imp = 3 if usd >= 50e6 or r["code"] == "P" else 2 if usd >= 5e6 else 1
         ev.append((r["d"], "insider", f"{r['name']} {verb} {r['sh']:,.0f} sh",
                    f"${usd:,.0f}", r["acc"], imp))
+    # >5% holder filings (one event per filing, largest reported stake)
+    for r in conn.execute(
+            "SELECT filed, form, filer_name, MAX(percent) pct, accession FROM holders_13dg WHERE company_id=? "
+            "GROUP BY accession", (cid,)):
+        pct = f" · {r['pct']:.1f}%" if r["pct"] is not None else ""
+        ev.append((r["filed"], "holder", f"{r['filer_name']} {r['form']}{pct}", None, r["accession"],
+                   2 if (r["form"] or "").upper().replace("SCHEDULE", "SC").startswith("SC 13D") else 1))
     conn.executemany("INSERT INTO events VALUES (?,?,?,?,?,?,?)",
                      [(cid, d, k, t, det, acc, imp) for d, k, t, det, acc, imp in ev if d])
     return len(ev)
@@ -181,5 +188,9 @@ def build_fts(conn, cid, reg, base) -> int:
 
 register_step("statements", build_statements)
 register_step("insiders", build_insiders)
+register_step("ownership", p4_steps.build_ownership)
+register_step("short_interest", p4_steps.build_short_interest)
+register_step("exec_comp", p4_steps.build_exec_comp)
+register_step("news", p4_steps.build_news)
 register_step("events", build_events)
 register_step("fts", build_fts)

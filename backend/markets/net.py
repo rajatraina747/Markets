@@ -6,6 +6,7 @@ gzip. Everything else in the codebase is pure parsing over bytes on disk.
 from __future__ import annotations
 
 import gzip
+import json
 import sys
 import time
 import urllib.error
@@ -42,7 +43,11 @@ class Fetcher:
                 time.sleep(delay)
         self._last[host] = time.monotonic()
 
-    def get(self, url: str, headers: dict | None = None) -> bytes:
+    def post_json(self, url: str, body: dict) -> bytes:
+        return self.get(url, headers={"Content-Type": "application/json", "Accept": "application/json"},
+                        data=json.dumps(body).encode())
+
+    def get(self, url: str, headers: dict | None = None, data: bytes | None = None) -> bytes:
         host = urllib.parse.urlsplit(url).hostname or ""
         ua, interval = self._profile(host)
         hdrs = {"User-Agent": ua, "Accept-Encoding": "gzip"}
@@ -51,7 +56,8 @@ class Fetcher:
         for attempt in range(self.retries + 1):
             self._wait(host, interval)
             try:
-                req = urllib.request.Request(url, headers=hdrs)
+                req = urllib.request.Request(url, headers=hdrs, data=data,
+                                             method="POST" if data is not None else "GET")
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     body = resp.read()
                     if resp.headers.get("Content-Encoding") == "gzip":

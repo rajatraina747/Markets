@@ -16,7 +16,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from .. import archive, config, db
+from .. import archive, config, db, journal
 from ..sources import edgar_filings
 from . import queries
 
@@ -148,6 +148,50 @@ def api_insider_txns(q, t):
     return queries.insider_txns(conn(), _cid(t), q)
 
 
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/ownership")
+def api_ownership(q, t):
+    return queries.ownership(conn(), _cid(t))
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/news")
+def api_news(q, t):
+    return queries.news(conn(), _cid(t), q)
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/comp")
+def api_comp(q, t):
+    return queries.exec_comp(conn(), _cid(t))
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/tenk")
+def api_tenk(q, t):
+    return queries.tenk_list(conn(), _cid(t))
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/diff")
+def api_diff(q, t):
+    return queries.tenk_diff(conn(), _cid(t), q["a"], q["b"], q.get("item", "1A"))
+
+
+@route(r"/api/c/(?P<t>[A-Za-z.\-]+)/journal")
+def api_journal(q, t):
+    cid = _cid(t)
+    last = conn().execute("SELECT date, close FROM prices_daily WHERE company_id=? ORDER BY date DESC LIMIT 1",
+                          (cid,)).fetchone()
+    closes = {r[0]: r[1] for r in conn().execute("SELECT date, close FROM prices_daily WHERE company_id=?", (cid,))}
+    trades = []
+    for tr in journal.list_trades(t):
+        tr.update(journal.trade_pnl(tr, last["close"] if last else None))
+        tr["entry_close"] = closes.get(tr["entry_date"])
+        trades.append(tr)
+    return {"notes": journal.list_notes(t), "trades": trades,
+            "last": dict(last) if last else None}
+
+
+# writes: /api/c/<T>/journal/<notes|trades>[/<id>]  (POST create/update, DELETE remove)
+WRITE_RX = re.compile(r"^/api/c/(?P<t>[A-Za-z.\-]+)/journal/(?P<kind>notes|trades)(?:/(?P<id>\d+))?$")
+
+
 # ------------------------------------------------------------------ server
 
 class Handler(BaseHTTPRequestHandler):
@@ -195,6 +239,49 @@ class Handler(BaseHTTPRequestHandler):
             import traceback
             traceback.print_exc()
             self._json({"error": repr(e)}, 500)
+
+    def _same_origin(self) -> bool:
+        """Writes only from our own page: Host must be local, Origin (if sent) must match it."""
+        host = (self.headers.get("Host") or "").split(":")[0]
+        if host not in ("localhost", "127.0.0.1"):
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or urlsplit(origin).hostname in ("localhost", "127.0.0.1")
+
+    def _write(self, method: str):
+        path = unquote(urlsplit(self.path).path)
+        m = WRITE_RX.match(path)
+        if not m:
+            return self._json({"error": "not found"}, 404)
+        if not self._same_origin() or (method == "POST" and
+                                       "application/json" not in (self.headers.get("Content-Type") or "")):
+            return self._json({"error": "forbidden"}, 403)
+        t, kind, item_id = m["t"].upper(), m["kind"], int(m["id"]) if m["id"] else None
+        try:
+            _cid(t)
+            if method == "DELETE":
+                if item_id is None:
+                    return self._json({"error": "id required"}, 400)
+                journal.delete(kind[:-1], t, item_id)
+                return self._json({"ok": True})
+            n = int(self.headers.get("Content-Length") or 0)
+            if n > 1_000_000:
+                return self._json({"error": "too large"}, 413)
+            body = json.loads(self.rfile.read(n) or b"{}")
+            fn = journal.save_note if kind == "notes" else journal.save_trade
+            return self._json(fn(t, body, item_id))
+        except journal.Invalid as e:
+            return self._json({"error": str(e)}, 400)
+        except NotFound as e:
+            return self._json({"error": str(e)}, 404)
+        except json.JSONDecodeError:
+            return self._json({"error": "bad json"}, 400)
+
+    def do_POST(self):  # noqa: N802
+        self._write("POST")
+
+    def do_DELETE(self):  # noqa: N802
+        self._write("DELETE")
 
     def _filing_file(self, ticker, acc, filename):
         """Serve one document out of an archived submission (relative <img> links resolve here)."""

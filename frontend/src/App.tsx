@@ -8,6 +8,10 @@ import Financials from './pages/Financials'
 import Filings from './pages/Filings'
 import Search from './pages/Search'
 import People from './pages/People'
+import Ownership from './pages/Ownership'
+import News from './pages/News'
+import Compare from './pages/Compare'
+import Journal from './pages/Journal'
 
 const NAV = [
   { to: 'overview', label: 'Overview', key: 'o', icon: '◉' },
@@ -15,8 +19,11 @@ const NAV = [
   { to: 'filings', label: 'Filings', key: 'l', icon: '▦' },
   { to: 'search', label: 'Search', key: 's', icon: '⌕' },
   { to: 'people', label: 'People', key: 'p', icon: '◎' },
+  { to: 'ownership', label: 'Ownership', key: 'w', icon: '◔' },
+  { to: 'news', label: 'News', key: 'n', icon: '≋' },
+  { to: 'compare', label: '10-K compare', key: 'c', icon: '⇄' },
 ]
-const SOON = ['Ownership', 'News', 'Journal']
+const MINE = [{ to: 'journal', label: 'Journal', key: 'j', icon: '✎' }]
 
 function Brand() {
   return (
@@ -34,7 +41,7 @@ function Palette({ ticker, onClose }: { ticker: string; onClose: () => void }) {
   const { data: companies } = useApi<{ ticker: string; name: string }[]>('companies')
   const opts = useMemo(() => {
     const base: { label: string; hint: string; go: () => void }[] = [
-      ...NAV.map((n) => ({ label: n.label, hint: 'g ' + n.key, go: () => nav(`/c/${ticker}/${n.to}`) })),
+      ...[...NAV, ...MINE].map((n) => ({ label: n.label, hint: 'g ' + n.key, go: () => nav(`/c/${ticker}/${n.to}`) })),
       ...(companies ?? []).map((c) => ({ label: `${c.ticker} — ${c.name}`, hint: 'company', go: () => nav(`/c/${c.ticker}/overview`) })),
     ]
     if (q.trim()) base.push({ label: `Search filings for “${q.trim()}”`, hint: '↵', go: () => nav(`/c/${ticker}/search?q=${encodeURIComponent(q.trim())}`) })
@@ -82,7 +89,7 @@ function Company() {
       if (e.key === '/') { e.preventDefault(); setPalette(true); return }
       if (e.key === 'g') { pendingG.current = Date.now(); return }
       if (Date.now() - pendingG.current < 900) {
-        const n = NAV.find((x) => x.key === e.key)
+        const n = [...NAV, ...MINE].find((x) => x.key === e.key)
         if (n) nav(`/c/${t}/${n.to}`)
         pendingG.current = 0
       }
@@ -107,7 +114,9 @@ function Company() {
             <span className={'chg ' + tone(ov.change)}>
               {ov.price && ov.prev_close ? (ov.price - ov.prev_close > 0 ? '+' : '') + (ov.price - ov.prev_close).toFixed(2) : ''} ({pct(ov.change, 2)})
             </span>
-            <span className="dimmer mono" style={{ fontSize: 11 }}>{ov.quote?.exchange} · {ov.quote?.currency} · delayed</span>
+            <span className="dimmer mono" style={{ fontSize: 11 }}>{ov.quote?.exchange} · {ov.quote?.currency} · {ov.quote?.partial
+              ? <span className="gold" title="Fetched during the session: the last bar is a live snapshot, not a close">intraday {new Date(ov.quote.as_of).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+              : <>close {ov.last_bar}</>}</span>
           </div>
         )}
         <div className="spacer" />
@@ -122,8 +131,12 @@ function Company() {
             <span style={{ width: 14, textAlign: 'center' }}>{n.icon}</span>{n.label}<span className="k">g {n.key}</span>
           </NavLink>
         ))}
-        <div className="sect">COMING NEXT</div>
-        {SOON.map((s) => <a key={s} className="soon">{s}</a>)}
+        <div className="sect">MINE</div>
+        {MINE.map((n) => (
+          <NavLink key={n.to} to={`/c/${t}/${n.to}`} className={({ isActive }) => (isActive ? 'active' : '')}>
+            <span style={{ width: 14, textAlign: 'center' }}>{n.icon}</span>{n.label}<span className="k">g {n.key}</span>
+          </NavLink>
+        ))}
         <div className="foot">
           {ov ? <>
             <div>{ov.counts.filings_archived.toLocaleString()} / {ov.counts.filings.toLocaleString()} filings archived</div>
@@ -142,6 +155,10 @@ function Company() {
             <Route path="filings/:acc" element={<Filings t={t} />} />
             <Route path="search" element={<Search t={t} />} />
             <Route path="people" element={<People t={t} />} />
+            <Route path="ownership" element={<Ownership t={t} />} />
+            <Route path="news" element={<News t={t} />} />
+            <Route path="compare" element={<Compare t={t} />} />
+            <Route path="journal" element={<Journal t={t} />} />
             <Route path="*" element={<Navigate to="overview" replace />} />
           </Routes>
         )}
