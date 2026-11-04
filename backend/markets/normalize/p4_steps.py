@@ -219,7 +219,9 @@ def build_segments(conn, cid, reg, base) -> int:
             g.update(filed=f["filed"], accession=f["accession"])
         facts += got
     fye = conn.execute("SELECT fiscal_year_end FROM companies WHERE id=?", (cid,)).fetchone()[0]
-    rows = seg.compute(facts, fye)
+    totals = {(r["period_type"], r["period_end"]): r["value"] for r in conn.execute(
+        "SELECT period_type, period_end, value FROM statement_lines WHERE company_id=? AND line='revenue'", (cid,))}
+    rows = seg.compute(facts, fye, totals)
     cols = ["metric", "axis", "member", "label", "period_type", "period_start", "period_end", "fy", "fp", "value",
             "filed", "accession", "derived", "is_subtotal"]
     conn.executemany(f"INSERT OR REPLACE INTO segment_lines (company_id,{','.join(cols)}) VALUES "

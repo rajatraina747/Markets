@@ -43,7 +43,7 @@ METRIC_ALIAS = {"CostOfGoodsAndServicesSold": "CostOfRevenue", "SegmentReporting
                 "OperatingIncomeLoss"}
 
 
-def compute(facts: list[dict], fye: str | None) -> list[dict]:
+def compute(facts: list[dict], fye: str | None, totals: dict | None = None) -> list[dict]:
     """facts: {concept, axis, member, start, end, value, filed, accession} → segment_lines rows."""
     facts = [dict(f, axis=AXIS_ALIAS.get(f["axis"], f["axis"])) for f in facts if f["axis"] in KEEP_AXES]
     # normalize revenue concepts into one 'revenue' series (ranked like statements)
@@ -81,7 +81,38 @@ def compute(facts: list[dict], fye: str | None) -> list[dict]:
                     break
     rows = _latest_classification(rows)
     _flag_subtotals(rows)
+    if totals:
+        _reconcile(rows, totals)
     return list(rows.values())
+
+
+def _reconcile(rows: dict, totals: dict) -> None:
+    """Where reported revenue is known, toggle subtotal flags greedily until the visible (leaf)
+    members best add up to it — fixes periods tagged with only parents, or parents + some children."""
+    groups: dict[tuple, list[dict]] = {}
+    for r in rows.values():
+        if r["metric"] == "revenue":
+            groups.setdefault((r["axis"], r["period_type"], r["period_end"]), []).append(r)
+    for (axis, ptype, end), members in groups.items():
+        total = totals.get((ptype, end))
+        if not total or len(members) < 2:
+            continue
+
+        def err():
+            return abs(sum(m["value"] for m in members if not m["is_subtotal"]) - total)
+        for _ in range(len(members)):
+            cur, best, best_err = err(), None, None
+            if cur <= abs(total) * 0.005:
+                break
+            for m in members:
+                m["is_subtotal"] ^= 1
+                e = err()
+                m["is_subtotal"] ^= 1
+                if e < cur - abs(total) * 0.01 and (best_err is None or e < best_err):
+                    best, best_err = m, e
+            if best is None:
+                break
+            best["is_subtotal"] ^= 1
 
 
 def _latest_classification(rows: dict) -> dict:

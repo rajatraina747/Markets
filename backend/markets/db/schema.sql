@@ -4,7 +4,7 @@
 CREATE TABLE companies (
   id            INTEGER PRIMARY KEY,
   ticker        TEXT NOT NULL UNIQUE,
-  cik           INTEGER UNIQUE,    -- SEC filers; NULL for non-US (e.g. LSE) companies
+  cik           INTEGER,           -- SEC filers; NULL for non-US. Not unique: share classes (GOOG/GOOGL) share one CIK
   country       TEXT DEFAULT 'US',
   ch_number     TEXT,              -- UK Companies House number
   currency      TEXT,
