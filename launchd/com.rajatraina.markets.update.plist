@@ -9,14 +9,14 @@
          news, macro, new 13F data sets — then rebuild markets.db. -->
     <key>ProgramArguments</key>
     <array>
-        <string>/opt/homebrew/bin/python3</string>
-        <string>/Users/you/Documents/Markets/markets</string>
+        <string>__PYTHON__</string>
+        <string>__REPO__/markets</string>
         <string>update</string>
         <string>all</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/you/Documents/Markets</string>
+    <string>__REPO__</string>
 
     <!-- US close (4pm ET) = 01:30 IST in EDT, 02:30 IST in EST. 04:15 IST Tue–Sat covers
          Mon–Fri sessions in both regimes and runs after Ember's 03:30 job. A sleeping Mac
@@ -33,9 +33,9 @@
     <!-- stdio must live OUTSIDE ~/Documents: launchd can't open TCC-protected paths for
          stdio (job dies with exit 78). -->
     <key>StandardOutPath</key>
-    <string>/Users/you/Library/Logs/markets/update.log</string>
+    <string>__LOG__</string>
     <key>StandardErrorPath</key>
-    <string>/Users/you/Library/Logs/markets/update.log</string>
+    <string>__LOG__</string>
 
     <key>LowPriorityIO</key>
     <true/>
