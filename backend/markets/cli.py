@@ -88,12 +88,33 @@ def cmd_update(a) -> int:
     return rc
 
 
+def _fetched_today(reg: dict, hours: float = 18) -> bool:
+    """This ticker's main sources were fetched within `hours` (resume after an interrupted run)."""
+    import time
+    from . import archive
+    from .sources import edgar_xbrl, prices
+
+    def fresh(p):
+        return bool(p) and time.time() - p.stat().st_mtime < hours * 3600
+    base = config.company_dir(reg["ticker"])
+    if not fresh(archive.latest_snapshot(base, prices.SOURCE_Y, "chart_1d.json")):
+        return False
+    return not reg.get("cik") or fresh(archive.latest_snapshot(base, edgar_xbrl.SOURCE, edgar_xbrl.name(reg["cik"])))
+
+
 def _update_many(a, tickers: list[str]) -> int:
     rc, failed = 0, []
     reg_all = registry.load()
+    if not a.force:
+        done = [t for t in tickers if _fetched_today(reg_all[t])]
+        if done:
+            print(f"resuming: {len(done)} already fetched today (use --force to refetch)", file=sys.stderr)
+        fetch_list = [t for t in tickers if t not in done]
+    else:
+        fetch_list = tickers
     f = Fetcher()
-    for i, t in enumerate(tickers):
-        print(f"=== [{i + 1}/{len(tickers)}] {t}", file=sys.stderr)
+    for i, t in enumerate(fetch_list):
+        print(f"=== [{i + 1}/{len(fetch_list)}] {t}", file=sys.stderr)
         a2 = argparse.Namespace(**{**vars(a), "ticker": t})
         if i:
             only = (set(a.only.split(",")) if a.only else set(SOURCES)) - GLOBAL_SOURCES
@@ -288,6 +309,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--forms", help="only download these form types, e.g. 10-K,10-Q")
     s.add_argument("--limit", type=int, help="download at most N filings this run")
     s.add_argument("--no-rebuild", action="store_true")
+    s.add_argument("--force", action="store_true", help="'all': refetch tickers already fetched today")
     s.add_argument("--periods-13f", type=int, default=8, help="how many quarterly 13F data sets to keep (default 8 ≈ 2y)")
     s.set_defaults(fn=cmd_update)
     s = sub.add_parser("rebuild", help="rebuild markets.db from raw (no network)")
