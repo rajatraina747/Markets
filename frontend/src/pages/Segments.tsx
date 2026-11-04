@@ -31,11 +31,12 @@ export default function Segments({ t }: { t: string }) {
       const v = members.find((x) => x.values[e])?.values[e]
       return period === 'quarterly' ? `${v?.fp} ${String(v?.fy).slice(2)}` : `FY${v?.fy}`
     }
-    const totals = periods.map((e) => members.reduce((s, x) => s + (x.values[e]?.v ?? 0), 0))
+    const val = (x: typeof members[0], e: string) => { const c = x.values[e]; return c && (showSub || !c.sub) ? c.v : null }
+    const totals = periods.map((e) => members.reduce((s, x) => s + (val(x, e) ?? 0), 0))
     const series = members.map((x, i) => ({
       name: x.label, type: mode === 'lines' ? 'line' : 'bar', stack: mode === 'lines' ? undefined : 'a',
       data: periods.map((e, j) => {
-        const v = x.values[e]?.v ?? null
+        const v = val(x, e)
         return mode === 'share' && v !== null && totals[j] ? +(v / totals[j] * 100).toFixed(2) : v
       }),
       color: PALETTE[i % PALETTE.length], barMaxWidth: 34, symbol: 'circle', symbolSize: 5,
@@ -53,17 +54,17 @@ export default function Segments({ t }: { t: string }) {
       yAxis: { type: 'value', ...axis, max: mode === 'share' ? 100 : undefined, axisLabel: { ...axis.axisLabel, formatter: (v: number) => (mode === 'share' ? v + '%' : compact(v, 0)) } },
       series,
     }
-  }, [m, members, periods, mode, period, metricKey, data])
+  }, [m, members, periods, mode, period, metricKey, data, showSub])
 
   if (error) return <div className="err">{error}</div>
   if (!data) return <Loading what="segments" />
   if (!data.axes.length) return <Empty>No segment data — segments come from each 10-K/10-Q's XBRL instance. Run <code>./markets update {t} --only segments</code> (lite) or check the filing archive (full).</Empty>
   const overlaps = metricKey === 'revenue' ? periods.filter((e) => {
-    const tot = data.total_revenue[e], sum = members.reduce((a, x) => a + (x.values[e]?.v ?? 0), 0)
+    const tot = data.total_revenue[e], sum = members.reduce((a, x) => a + (x.values[e] && !x.values[e].sub ? x.values[e].v : 0), 0)
     return tot && sum > tot * 1.02
   }) : []
   const last = periods[periods.length - 1], prev = periods[periods.length - (period === 'quarterly' ? 5 : 2)]
-  const lastTotal = members.reduce((s, x) => s + (x.values[last]?.v ?? 0), 0)
+  const lastTotal = members.reduce((s, x) => s + (x.values[last] && !x.values[last].sub ? x.values[last].v : 0), 0)
 
   return (
     <div className="grid">
@@ -97,8 +98,8 @@ export default function Segments({ t }: { t: string }) {
                   <tr key={x.member} style={x.is_subtotal ? { fontWeight: 600 } : undefined}>
                     <td><span className="dot" style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: x.is_subtotal ? 'transparent' : PALETTE[i % PALETTE.length], marginRight: 8, border: x.is_subtotal ? '1px solid var(--text-3)' : 0 }} />
                       {x.label}{x.is_subtotal ? <span className="dimmer" style={{ fontSize: 10 }}> subtotal</span> : null}</td>
-                    {periods.slice().reverse().slice(0, 10).map((e) => { const c = x.values[e]; return <td key={e} className={'n' + (c?.derived ? ' derived' : '')} style={c?.derived ? { fontStyle: 'italic' } : undefined}>{c ? compact(c.v, 1) : <span className="dimmer">·</span>}</td> })}
-                    <td className="n">{v !== undefined && lastTotal && !x.is_subtotal ? pct(v / lastTotal, 1, false) : ''}</td>
+                    {periods.slice().reverse().slice(0, 10).map((e) => { const c = x.values[e]; return <td key={e} className={'n' + (c?.derived ? ' derived' : '') + (c?.sub ? ' dimmer' : '')} style={c?.derived ? { fontStyle: 'italic' } : undefined} title={c?.sub ? 'subtotal in this period (not stacked)' : undefined}>{c ? compact(c.v, 1) : <span className="dimmer">·</span>}</td> })}
+                    <td className="n">{v !== undefined && lastTotal && !x.values[last]?.sub ? pct(v / lastTotal, 1, false) : ''}</td>
                     <td className={'n ' + (v !== undefined && p ? (v > p ? 'up' : 'down') : '')}>{v !== undefined && p ? pct(v / p - 1, 0) : '—'}</td>
                   </tr>
                 )

@@ -169,7 +169,7 @@ export interface CompareRes { start?: string; series: Record<string, [string, nu
 
 // ---------------------------------------------------------------- segments / earnings / universe
 
-export interface SegMember { member: string; label: string; is_subtotal: boolean; n: number; values: Record<string, { v: number; derived: number; fy: number; fp: string }> }
+export interface SegMember { member: string; label: string; is_subtotal: boolean; n: number; values: Record<string, { v: number; derived: number; fy: number; fp: string; sub: number }> }
 export interface SegAxis { axis: string; label: string; n_points: number; metrics: Record<string, { periods: string[]; members: SegMember[] }> }
 export interface Segments { period: 'annual' | 'quarterly'; axes: SegAxis[]; total_revenue: Record<string, number> }
 

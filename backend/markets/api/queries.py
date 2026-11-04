@@ -584,7 +584,8 @@ def segments(conn, cid, period: str) -> dict:
         m = a["metrics"].setdefault(r["metric"], {"members": {}, "periods": set()})
         mem = m["members"].setdefault(r["member"], {"member": r["member"], "label": r["label"], "subtotal_share": 0,
                                                    "n": 0, "values": {}})
-        mem["values"][r["period_end"]] = {"v": r["value"], "derived": r["derived"], "fy": r["fy"], "fp": r["fp"]}
+        mem["values"][r["period_end"]] = {"v": r["value"], "derived": r["derived"], "fy": r["fy"], "fp": r["fp"],
+                                          "sub": r["is_subtotal"]}
         mem["n"] += 1
         mem["subtotal_share"] += r["is_subtotal"]
         m["periods"].add(r["period_end"])
@@ -596,7 +597,7 @@ def segments(conn, cid, period: str) -> dict:
         for k, m in a["metrics"].items():
             mems = list(m["members"].values())
             for mm in mems:
-                mm["is_subtotal"] = mm["subtotal_share"] > mm["n"] / 2
+                mm["is_subtotal"] = mm["subtotal_share"] == mm["n"]  # a subtotal in every period it appears
                 del mm["subtotal_share"]
             mems.sort(key=lambda x: -max((v["v"] for v in x["values"].values()), default=0))
             metrics[k] = {"periods": sorted(m["periods"]), "members": mems}
